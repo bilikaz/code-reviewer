@@ -1,0 +1,29 @@
+
+metadata:
+  title: "Add user lookup endpoint"
+  description: "GET /users/:id"
+  author: dev
+  baseBranch: main
+  headBranch: feature/user-lookup
+  url: "mock://reconcile/user_invalid_reply"
+  state: open
+
+
+comments:
+  - id: "400"
+    threadId: "t400"
+    by: bot
+    author: reviewer-bot
+    body: "`id` flows from the URL into a string-concatenated SQL query — this is a SQL injection vector."
+    createdAt: "2024-01-01T00:00:00Z"
+    inline:
+      path: "src/users.ts"
+      line: 6
+      side: head
+    resolved: false
+  - id: "401"
+    parentId: "400"
+    by: human
+    author: dev
+    body: "The frontend validates the id format before sending, so this is safe."
+    createdAt: "2024-01-02T00:00:00Z"

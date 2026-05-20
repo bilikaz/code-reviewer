@@ -1,0 +1,23 @@
+
+metadata:
+  title: "Remove legacy helper"
+  description: "Drops src/legacy.ts in favor of new util."
+  author: dev
+  baseBranch: main
+  headBranch: chore/drop-legacy
+  url: "mock://reconcile/auto_address_deleted"
+  state: open
+
+
+comments:
+  - id: "100"
+    threadId: "t100"
+    by: bot
+    author: reviewer-bot
+    body: "Variable `tmp` is shadowed by the outer scope."
+    createdAt: "2024-01-01T00:00:00Z"
+    inline:
+      path: "src/legacy.ts"
+      line: 12
+      side: head
+    resolved: false

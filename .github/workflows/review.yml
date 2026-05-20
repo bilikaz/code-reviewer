@@ -1,0 +1,41 @@
+# Self-review: on every PR, build the reviewer image from that PR's source
+# and run it against the PR itself.
+name: PR review
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents:      read
+  pull-requests: write
+
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Full history so `git diff base...head` and rename detection work.
+          fetch-depth: 0
+
+      - name: Build reviewer image
+        run: docker build -t reviewer .
+
+      - name: Run reviewer on this PR
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          LLM_URL:      ${{ secrets.LLM_URL }}
+          LLM_KEY:      ${{ secrets.LLM_KEY }}
+          LLM_MODEL:    ${{ vars.LLM_MODEL }}
+        run: |
+          docker run --rm \
+            -v "$PWD:/workspace" \
+            -w /workspace \
+            -e GITHUB_ACTIONS \
+            -e GITHUB_TOKEN \
+            -e LLM_URL \
+            -e LLM_KEY \
+            -e LLM_MODEL \
+            reviewer \
+            run --pr "${{ github.event.pull_request.html_url }}"

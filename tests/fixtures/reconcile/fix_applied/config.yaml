@@ -1,0 +1,23 @@
+
+metadata:
+  title: "Add /search endpoint"
+  description: "Free-text search with pagination."
+  author: dev
+  baseBranch: main
+  headBranch: feature/search
+  url: "mock://reconcile/fix_applied"
+  state: open
+
+
+comments:
+  - id: "500"
+    threadId: "t500"
+    by: bot
+    author: reviewer-bot
+    body: "`limit` comes from the query string without bounds checking — clamp it (e.g. 1..100) before passing to the DB."
+    createdAt: "2024-01-01T00:00:00Z"
+    inline:
+      path: "src/search.ts"
+      line: 5
+      side: head
+    resolved: false

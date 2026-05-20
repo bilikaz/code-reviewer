@@ -1,0 +1,11 @@
+
+metadata:
+  title: "Wire payment API client"
+  description: "Hooks up the new payments provider."
+  author: dev
+  baseBranch: main
+  headBranch: feature/payments
+  url: "mock://review/exposed_secret"
+  state: open
+
+comments: []

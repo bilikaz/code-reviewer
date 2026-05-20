@@ -1,0 +1,23 @@
+
+metadata:
+  title: "Rename auth.ts to authentication.ts"
+  description: "Renaming for clarity; no behavior change."
+  author: dev
+  baseBranch: main
+  headBranch: refactor/rename-auth
+  url: "mock://reconcile/renamed_file"
+  state: open
+
+
+comments:
+  - id: "200"
+    threadId: "t200"
+    by: bot
+    author: reviewer-bot
+    body: "Hardcoded secret on this line — move to env."
+    createdAt: "2024-01-01T00:00:00Z"
+    inline:
+      path: "src/auth.ts"
+      line: 3
+      side: head
+    resolved: false

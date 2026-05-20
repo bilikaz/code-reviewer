@@ -1,0 +1,11 @@
+
+metadata:
+  title: "Add helper for formatting timestamps"
+  description: "Pure helper, no I/O. Used in a couple of log call sites."
+  author: dev
+  baseBranch: main
+  headBranch: feature/format-helper
+  url: "mock://review/clean"
+  state: open
+
+comments: []

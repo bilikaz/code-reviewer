@@ -1,0 +1,7 @@
+node_modules
+.ci-artifacts
+.git
+.old
+.ci
+.env*
+*.log

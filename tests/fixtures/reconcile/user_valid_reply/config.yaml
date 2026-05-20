@@ -1,0 +1,29 @@
+
+metadata:
+  title: "Refactor settings access"
+  description: "Centralizes config reads through getSetting()."
+  author: dev
+  baseBranch: main
+  headBranch: refactor/settings
+  url: "mock://reconcile/user_valid_reply"
+  state: open
+
+
+comments:
+  - id: "300"
+    threadId: "t300"
+    by: bot
+    author: reviewer-bot
+    body: "`getSetting('debug')` may return undefined when the env var is missing — guard before using as a boolean."
+    createdAt: "2024-01-01T00:00:00Z"
+    inline:
+      path: "src/feature.ts"
+      line: 8
+      side: head
+    resolved: false
+  - id: "301"
+    parentId: "300"
+    by: human
+    author: dev
+    body: "By design — getSetting() now returns `false` when the key is missing. See settings.ts:14 — the `?? false` default handles every callsite uniformly."
+    createdAt: "2024-01-02T00:00:00Z"

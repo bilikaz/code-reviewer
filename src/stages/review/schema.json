@@ -1,0 +1,54 @@
+{
+  "$schema": "https://json-schema.org/draft-07/schema#",
+  "title": "review",
+  "description": "Inline review findings, anchored by code snippet (not line number).",
+  "type": "object",
+  "required": ["comments"],
+  "additionalProperties": false,
+  "properties": {
+    "comments": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["path", "anchor", "body", "severity"],
+        "additionalProperties": false,
+        "properties": {
+          "path": {
+            "type": "string",
+            "description": "Repo-relative path of the file the comment is about."
+          },
+          "anchor": {
+            "type": "object",
+            "required": ["snippet"],
+            "additionalProperties": false,
+            "properties": {
+              "snippet": {
+                "type": "string",
+                "minLength": 1,
+                "description": "Verbatim line(s) from the file. The harness strips leading whitespace; internal whitespace must match."
+              },
+              "context_before": {
+                "type": "string",
+                "description": "Optional. Line(s) immediately before snippet, to disambiguate when snippet repeats."
+              },
+              "context_after": {
+                "type": "string",
+                "description": "Optional. Line(s) immediately after snippet; same role as context_before."
+              }
+            }
+          },
+          "body": {
+            "type": "string",
+            "minLength": 1,
+            "description": "One short paragraph; cite the standard or reason. No headers."
+          },
+          "severity": {
+            "type": "string",
+            "enum": ["info", "warning", "blocker"],
+            "description": "info = nit / maintainability / readability. warning = likely runtime bug. blocker = must fix before merge (exploitable security, data-loss risk, correctness bug certain to break production). Reserve warning for things that COULD CAUSE A RUNTIME PROBLEM; if you're tempted to label maintainability as warning, it's info."
+          }
+        }
+      }
+    }
+  }
+}

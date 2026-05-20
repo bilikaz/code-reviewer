@@ -1,0 +1,11 @@
+
+metadata:
+  title: "Add cleanup script for build artifacts"
+  description: "Removes stale build directories nightly."
+  author: dev
+  baseBranch: main
+  headBranch: ops/cleanup-script
+  url: "mock://review/dangerous_shell"
+  state: open
+
+comments: []

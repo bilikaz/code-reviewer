@@ -1,0 +1,11 @@
+
+metadata:
+  title: "Tweak deployment manifest"
+  description: "Small change to the kustomization."
+  author: dev
+  baseBranch: main
+  headBranch: ops/manifest-tweak
+  url: "mock://review/suspicious_binary"
+  state: open
+
+comments: []

@@ -1,0 +1,11 @@
+
+metadata:
+  title: "Update React signup form"
+  description: "Tweaks validation messages on the signup screen."
+  author: dev
+  baseBranch: main
+  headBranch: feature/signup-copy
+  url: "mock://review/non_allowlisted_text"
+  state: open
+
+comments: []

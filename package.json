@@ -1,0 +1,28 @@
+{
+  "name": "@reviewer/cli",
+  "version": "0.1.0",
+  "description": "LLM-driven PR reviewer. Pluggable VCS destinations. OpenAI-compatible LLM API.",
+  "type": "module",
+  "bin": {
+    "reviewer": "src/cli.ts"
+  },
+  "scripts": {
+    "start": "node src/cli.ts",
+    "typecheck": "tsc --noEmit",
+    "test:inner": "vitest run",
+    "test": "docker build --build-arg BUILD_TARGET=test -t reviewer-test . && docker run --rm --entrypoint pnpm --env-file tests/.env -v \"$PWD/node_modules:/reviewer/node_modules\" -w /reviewer reviewer-test run test:inner"
+  },
+  "dependencies": {
+    "@octokit/rest": "^21.0.2",
+    "ajv": "^8.17.1",
+    "yaml": "^2.6.1"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "typescript": "^5.7.3",
+    "vitest": "~4.1.4"
+  },
+  "engines": {
+    "node": ">=24"
+  }
+}
