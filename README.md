@@ -13,7 +13,7 @@ Four stages, run in order by `reviewer run`:
 1. **fetch** — PR metadata, changed files, diffs, prior bot threads, project standards
 2. **reconcile** — re-judge each unresolved bot thread against the new head; relocate on renames, auto-address on deletion (skipped on first run)
 3. **review** — LLM analyzes the diff with `Read` + `Bash` tools available, posts inline findings
-4. **summarize** — derives final verdict (`approve` / `request_changes`), posts a summary comment
+4. **summarize** — derives final verdict (`approve` / `reject`), posts a summary comment
 
 Each stage is also addressable on its own (e.g. `reviewer review --pr <url>`).
 
@@ -70,7 +70,7 @@ All config is env-only and read once at startup. See [.env.example](.env.example
 | `LLM_MODEL` | no | auto-detect from `/models` | |
 | `GITHUB_TOKEN` / `GITLAB_TOKEN` / `BITBUCKET_TOKEN` | one | — | the one matching the PR URL |
 | `LLM_TEMPERATURE` | no | `0.2` | |
-| `LLM_MAX_OUTPUT_TOKENS` | no | `8192` | |
+| `LLM_MAX_OUTPUT_TOKENS` | no | `32768` | |
 | `LLM_HEAL_RETRIES` | no | `2` | retries when LLM output fails schema validation |
 
 ## Development
@@ -96,8 +96,7 @@ src/
     summarize/        final verdict + summary comment
   llm/                OpenAI-compatible streaming client, tool loop, schema healing
   vcs/                github / gitlab / bitbucket / mock providers
-  lib/                git diff parsing, snippet → line anchor
-  standards/          CLAUDE.md + standards file loader
+  lib/                git diff parsing
   logger/             structured JSON logging
 tests/
   e2e/                vitest end-to-end tests
