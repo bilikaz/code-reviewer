@@ -39,6 +39,10 @@ Findings about an **absent** thing ("should also validate Y") anchor to the most
 
 If you're tempted to label maintainability as `warning`, it's `info`. Reserve `warning` for things that COULD CAUSE A RUNTIME PROBLEM.
 
+## What NOT to emit
+
+Emit a finding only when you want the author to change or reconsider something. Do NOT post comments that praise, approve, confirm, summarize, or restate a change — silence is the correct response to code that is fine. An empty `comments` array is a valid and expected result. `info` is for a nit worth fixing, never for "this looks good".
+
 ## `body` content
 
 One short paragraph. Cite the reason (correctness / security / perf / maintainability / a specific standard or checklist item). No headers, no bullet lists inside `body`, no markdown beyond inline code spans.

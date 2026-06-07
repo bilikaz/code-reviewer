@@ -31,6 +31,28 @@ Copy [.github/workflows/review.yml](.github/workflows/review.yml) into your repo
 
 The workflow builds the reviewer image from source on each run and triggers on every PR open / synchronize / reopen. (A pre-built image on GHCR is planned — until then, consumers should vendor the Dockerfile or build from a tagged release.)
 
+## Quick start (npm dependency)
+
+For Node projects, consume the reviewer as a `devDependency` instead of building the image — the CLI runs directly (no Docker, no build step; it executes its TypeScript at runtime). Works with npm, yarn, or pnpm.
+
+Add it to the consumer project, pinned to a tag (the git form is the same for every package manager):
+
+```json
+"devDependencies": {
+  "@reviewer/cli": "github:bilikaz/code-reviewer#v0.1.0"
+}
+```
+
+Then copy [examples/review.yml](examples/review.yml) into `<your-project>/.github/workflows/` and set the same `LLM_URL` / `LLM_KEY` / `LLM_MODEL` secrets as above. If this reviewer repo is **private**, the consumer's install step needs a PAT — see the comments in that file.
+
+Run it locally the same way:
+
+```bash
+npx reviewer run --pr https://github.com/owner/repo/pull/123    # yarn: yarn reviewer ... | pnpm: pnpm exec reviewer ...
+```
+
+Requires Node ≥24 in the consumer (the CLI uses TS transforms at runtime).
+
 ## Local usage
 
 ```bash

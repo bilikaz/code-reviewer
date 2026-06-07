@@ -6,6 +6,7 @@
   "bin": {
     "reviewer": "src/cli.ts"
   },
+  "files": ["src"],
   "scripts": {
     "start": "node src/cli.ts",
     "typecheck": "tsc --noEmit",
