@@ -9,12 +9,15 @@
 // Docker's --env-file (see package.json's `test` script); no host-side
 // .env loading.
 
+import { existsSync } from "node:fs";
+
 import { ConsoleLogger } from "./logger/console.ts";
 import type { Logger } from "./logger/index.ts";
 import { resolveModel } from "./llm/model.ts";
 import { BitbucketProvider } from "./vcs/bitbucket.ts";
 import { GitHubProvider } from "./vcs/github.ts";
 import { GitLabProvider } from "./vcs/gitlab.ts";
+import { LocalVcsProvider } from "./vcs/local.ts";
 import { MockVcsProvider } from "./vcs/mock.ts";
 import type { ProviderKind, VcsProvider } from "./vcs/types.ts";
 import { detectProvider } from "./vcs/types.ts";
@@ -123,6 +126,14 @@ function requireField(value: string, name: string, hint: string): string {
   return value;
 }
 
+// True when running inside a container. Docker writes `/.dockerenv` at the
+// container root; Podman writes `/run/.containerenv`. Both are created by the
+// runtime, not the caller — a far higher bar than an env flag (which is why
+// `local://` review gates on this, not on a variable anyone can export).
+function inContainer(): boolean {
+  return existsSync("/.dockerenv") || existsSync("/run/.containerenv");
+}
+
 export function loadConfig(opts: CliOverrides): Config {
   const e = process.env;
   if (!opts.prUrl) throw new Error("loadConfig: prUrl required");
@@ -168,6 +179,22 @@ export function loadConfig(opts: CliOverrides): Config {
       break;
     case "mock":
       break;
+    case "local":
+      // Local review gives the LLM the Bash/Read tools against the real
+      // checkout. Those tools assume a throwaway sandbox; running on a bare
+      // host would hand an LLM unsandboxed shell + file access to your
+      // machine. Require an actual container — detect it rather than trust an
+      // env flag (which any caller could set on the host).
+      if (!inContainer()) {
+        throw new Error(
+          "local review must run inside a container (the LLM gets shell + file access, " +
+          "and the container is the sandbox). Run:\n" +
+          "  docker build -t reviewer .\n" +
+          "  docker run --rm -v \"$PWD:/workspace\" -w /workspace --env-file .env \\\n" +
+          "    reviewer review --pr local://main",
+        );
+      }
+      break;
   }
 
   return config;
@@ -181,6 +208,7 @@ function makeVcs(c: Config): Promise<VcsProvider> {
     case "gitlab":    return GitLabProvider.create(c);
     case "bitbucket": return BitbucketProvider.create(c);
     case "mock":      return MockVcsProvider.create(c);
+    case "local":     return LocalVcsProvider.create(c);
   }
 }
 

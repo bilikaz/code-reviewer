@@ -9,8 +9,11 @@
 #      identically for npm, yarn, and pnpm:
 #
 #        "devDependencies": {
-#          "@reviewer/cli": "github:bilikaz/code-reviewer#v0.1.0"
+#          "@reviewer/cli": "github:bilikaz/code-reviewer#v0.1.1"
 #        }
+#
+#      The package ships prebuilt JavaScript (dist/ is committed), so the
+#      install does no build step and needs no toolchain beyond your own.
 #
 #      - Public reviewer repo  -> this just works in CI, no extra auth.
 #      - Private reviewer repo -> the install step needs read access. Add a PAT
@@ -42,15 +45,15 @@ jobs:
   review:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           # Full history so `git diff base...head` and rename detection work.
           fetch-depth: 0
 
       # pnpm only: install pnpm before setup-node so its cache can resolve.
-      # - uses: pnpm/action-setup@v4
+      # - uses: pnpm/action-setup@v6
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
           node-version: 24      # reviewer needs Node >=24 (TS transforms at runtime)
           cache: npm            # yarn: cache: yarn   | pnpm: cache: pnpm
@@ -62,7 +65,12 @@ jobs:
 
       - name: Review this PR
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # The default GITHUB_TOKEN can post comments but, being a GitHub App
+          # (integration) token, can't resolve review threads — so the reviewer
+          # can't clean up addressed bot threads on follow-up pushes. To enable
+          # that, set a user PAT secret REVIEWER_GH_TOKEN (fine-grained:
+          # Pull requests = read+write). Falls back to the default token when unset.
+          GITHUB_TOKEN: ${{ secrets.REVIEWER_GH_TOKEN || secrets.GITHUB_TOKEN }}
           LLM_URL:      ${{ secrets.LLM_URL }}
           LLM_KEY:      ${{ secrets.LLM_KEY }}
           LLM_MODEL:    ${{ vars.LLM_MODEL }}

@@ -78,7 +78,7 @@ describe("summarize", () => {
     const state = baseState({
       findings: [{
         path: "src/auth.ts",
-        anchor: { snippet: "const KEY = 'sk-abc'" },
+        snippet: "const KEY = 'sk-abc'",
         body: "Hardcoded credential.",
         severity: "blocker",
       }],
@@ -139,7 +139,7 @@ describe("summarize", () => {
     const state = baseState({
       findings: [{
         path: "src/x.ts",
-        anchor: { snippet: "x" },
+        snippet: "x",
         body: longBody,
         severity: "info",
       }],

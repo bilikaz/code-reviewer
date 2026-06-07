@@ -101,20 +101,20 @@ async function postFindings(ctx: Ctx, findings: ReviewFinding[]): Promise<void> 
 // can't be uniquely located we post on line 1 with a banner explaining why.
 async function postFinding(ctx: Ctx, log: ReturnType<Ctx["logger"]["child"]>, c: ReviewFinding): Promise<void> {
   if (!c.path || !existsSync(c.path)) {
-    const body = wrapWithBanner(c.anchor.snippet, c.body, "anchor not located");
+    const body = wrapWithBanner(c.snippet, c.body, "anchor not located");
     log.warn("anchor.unresolved", { path: c.path, fallback: "top_level" });
     await ctx.vcs.postSummaryComment(body);
     return;
   }
 
-  let line = findUniqueMatch(c.path, c.anchor);
+  let line = findUniqueMatch(c.path, c);
   let body = c.body;
   if (line == null) {
     line = 1;
     log.warn("anchor.unresolved", { path: c.path, fallback: "line_1" });
-    body = wrapWithBanner(c.anchor.snippet, c.body, "snippet not uniquely matched on head");
+    body = wrapWithBanner(c.snippet, c.body, "snippet not uniquely matched on head");
   }
-  await ctx.vcs.postInlineComment({ path: c.path, line, body });
+  await ctx.vcs.postInlineComment({ path: c.path, line, body, severity: c.severity });
 }
 
 // ---- anchor resolution --------------------------------------------------

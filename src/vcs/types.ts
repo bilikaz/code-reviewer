@@ -1,4 +1,4 @@
-export type ProviderKind = "github" | "gitlab" | "bitbucket" | "mock";
+export type ProviderKind = "github" | "gitlab" | "bitbucket" | "mock" | "local";
 
 export interface PRMetadata {
   title: string;
@@ -31,6 +31,9 @@ export interface InlinePost {
   path: string;
   line: number;
   body: string;
+  // Optional context. Real providers ignore it (severity isn't part of a VCS
+  // comment); the local provider uses it to color console output.
+  severity?: "info" | "warning" | "blocker";
 }
 
 export interface ChangedFile {
@@ -92,6 +95,7 @@ export interface VcsProvider {
 // Dispatch helper: returns which provider's `create()` should handle a URL.
 export function detectProvider(url: string): ProviderKind {
   if (/^mock:\/\//.test(url)) return "mock";
+  if (/^local:\/\//.test(url)) return "local";
   if (/^https?:\/\/github\.com\/[^/]+\/[^/]+\/pull\/\d+/.test(url)) return "github";
   if (/^https?:\/\/[^/]+\/[^/]+\/[^/]+\/-\/merge_requests\/\d+/.test(url)) return "gitlab";
   if (/^https?:\/\/bitbucket\.org\/[^/]+\/[^/]+\/pull-requests\/\d+/.test(url)) return "bitbucket";
