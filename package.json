@@ -3,6 +3,7 @@
   "version": "0.1.1",
   "description": "LLM-driven PR reviewer. Pluggable VCS destinations. OpenAI-compatible LLM API.",
   "type": "module",
+  "packageManager": "pnpm@10.33.0",
   "bin": {
     "reviewer": "dist/cli.js"
   },
