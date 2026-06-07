@@ -45,15 +45,15 @@ jobs:
   review:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           # Full history so `git diff base...head` and rename detection work.
           fetch-depth: 0
 
       # pnpm only: install pnpm before setup-node so its cache can resolve.
-      # - uses: pnpm/action-setup@v4
+      # - uses: pnpm/action-setup@v6
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
           node-version: 24      # reviewer needs Node >=24 (TS transforms at runtime)
           cache: npm            # yarn: cache: yarn   | pnpm: cache: pnpm
