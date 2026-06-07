@@ -73,7 +73,9 @@ export interface StageContext {
 
 export interface ReviewFinding {
   path: string;
-  anchor: { snippet: string; context_before?: string; context_after?: string };
+  snippet: string;
+  context_before?: string;
+  context_after?: string;
   body: string;
   severity: "info" | "warning" | "blocker";
 }

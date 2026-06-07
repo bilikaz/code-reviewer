@@ -10,7 +10,12 @@
 //                 unresolved bot threads count as unaddressed)
 //
 // Flags:
-//   --pr <url>          required (or set PR_URL env)
+//   --pr <url>          required (or set PR_URL env). A real PR URL (github/
+//                       gitlab/bitbucket), `mock://<scenario>` for tests, or
+//                       `local://<base>` to review the current checkout's
+//                       branch against <base> (default main) with no VCS —
+//                       findings print to the console (comments + verdict)
+//                       instead of posting. Must run inside a container.
 //   --llm-url <url>     overrides LLM_URL
 //   --llm-key <key>     overrides LLM_KEY
 //   --llm-model <name>  overrides LLM_MODEL (otherwise auto-detected)
@@ -54,7 +59,7 @@ function parseArgs(argv: string[]): ParsedArgs {
 
 function usageAndExit(): never {
   process.stderr.write(
-    "usage: reviewer <run|fetch|reconcile|review|summarize> --pr <url> [--llm-url <u>] [--llm-key <k>] [--llm-model <m>]\n",
+    "usage: reviewer <run|fetch|reconcile|review|summarize> --pr <url|local://[base]> [--llm-url <u>] [--llm-key <k>] [--llm-model <m>]\n",
   );
   process.exit(2);
 }

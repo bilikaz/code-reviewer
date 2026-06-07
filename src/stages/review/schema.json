@@ -10,32 +10,25 @@
       "type": "array",
       "items": {
         "type": "object",
-        "required": ["path", "anchor", "body", "severity"],
+        "required": ["path", "snippet", "body", "severity"],
         "additionalProperties": false,
         "properties": {
           "path": {
             "type": "string",
             "description": "Repo-relative path of the file the comment is about."
           },
-          "anchor": {
-            "type": "object",
-            "required": ["snippet"],
-            "additionalProperties": false,
-            "properties": {
-              "snippet": {
-                "type": "string",
-                "minLength": 1,
-                "description": "Verbatim line(s) from the file. The harness strips leading whitespace; internal whitespace must match."
-              },
-              "context_before": {
-                "type": "string",
-                "description": "Optional. Line(s) immediately before snippet, to disambiguate when snippet repeats."
-              },
-              "context_after": {
-                "type": "string",
-                "description": "Optional. Line(s) immediately after snippet; same role as context_before."
-              }
-            }
+          "snippet": {
+            "type": "string",
+            "minLength": 1,
+            "description": "A SINGLE verbatim line from the file — the most specific line the finding is about, never a multi-line block. The harness strips leading whitespace; internal whitespace must match. Escape double quotes as \\\" and there must be no raw newline."
+          },
+          "context_before": {
+            "type": "string",
+            "description": "Optional. The single line immediately before snippet, to disambiguate when snippet repeats. Same escaping rules."
+          },
+          "context_after": {
+            "type": "string",
+            "description": "Optional. The single line immediately after snippet; same role as context_before."
           },
           "body": {
             "type": "string",

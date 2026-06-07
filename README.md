@@ -62,6 +62,22 @@ docker run --rm --env-file .env -v "$PWD:/workspace" -w /workspace \
   reviewer run --pr https://github.com/owner/repo/pull/123
 ```
 
+### Local branch review (`local://`)
+
+Review the **current checkout's branch against a base ref** — no PR, no VCS API, no token. Instead of posting, the reviewer **echoes each action to the console** (inline comments with `file:line`, the summary, and a green/red verdict) — like a real provider's posts, just printed. Handy for a fast pre-push pass, especially pointed at a small local model while CI uses a heavier one.
+
+```bash
+docker build -t reviewer .   # once (or after changing the reviewer)
+docker run --rm -t --env-file .env -v "$PWD:/workspace" -w /workspace \
+  reviewer review --pr local://main
+```
+
+(`-t` gives a TTY so the output is colored; without it, or under `NO_COLOR`, it prints plain.)
+
+`local://<base>` diffs `<base>...HEAD` (base defaults to `main`). Use `local://<branch-or-sha>` to pick a different base.
+
+> **Must run inside a container.** Local review gives the LLM the `Bash`/`Read` tools against the mounted checkout; the container is the sandbox. The CLI refuses `local://` unless it detects a container (`/.dockerenv` / `/run/.containerenv`, created by the runtime — not a flag a caller can set), so it can't hand an LLM shell access to a bare host.
+
 ### Commands
 
 | Command | What runs |
@@ -75,7 +91,8 @@ docker run --rm --env-file .env -v "$PWD:/workspace" -w /workspace \
 ### Flags
 
 ```
---pr <url>          required (or set PR_URL env)
+--pr <url>          required (or set PR_URL env). Real PR URL, mock://<scenario>,
+                    or local://<base> (review current branch vs base; Docker only)
 --llm-url <url>     overrides LLM_URL
 --llm-key <key>     overrides LLM_KEY
 --llm-model <name>  overrides LLM_MODEL

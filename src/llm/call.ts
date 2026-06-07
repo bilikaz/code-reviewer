@@ -35,14 +35,26 @@ function serializeSections(sections: Section[]): string {
 
 const JSON_FENCE_RE = /```(?:json)?\s*\n?([\s\S]*?)```/g;
 
-function extractJson(text: string): unknown {
+interface Extracted {
+  value: unknown;
+  // true  → a whole candidate parsed cleanly (trustworthy).
+  // false → only a sub-span parsed; the surrounding JSON was malformed, so the
+  //         value is a salvaged fragment and likely doesn't match the schema.
+  clean: boolean;
+}
+
+function extractJson(text: string): Extracted {
   const candidates: string[] = [];
   for (const m of text.matchAll(JSON_FENCE_RE)) candidates.push(m[1]!.trim());
   candidates.push(text.trim());
+  let parseError = "";
   for (const c of candidates) {
-    try { return JSON.parse(c); } catch { /* try next */ }
+    try { return { value: JSON.parse(c), clean: true }; }
+    catch (e) { if (!parseError) parseError = (e as Error).message; }
   }
-  // Longest-span scan: shrink suffixes until JSON.parse succeeds.
+  // Longest-span scan: shrink suffixes until JSON.parse succeeds. This only
+  // runs when no whole candidate parsed — i.e. the JSON is malformed — so a
+  // hit here is a salvaged fragment, not the intended object.
   let best: { span: number; value: unknown } | null = null;
   for (const opener of ["{", "["]) {
     let i = text.indexOf(opener);
@@ -58,18 +70,28 @@ function extractJson(text: string): unknown {
       i = text.indexOf(opener, i + 1);
     }
   }
-  if (best) return best.value;
-  throw new Error("no JSON object or array could be parsed from response");
+  if (best) return { value: best.value, clean: false };
+  throw new Error(`response is not valid JSON: ${parseError}`);
 }
 
 function healPrompt(error: string): string {
+  // Tailor the instruction to the actual failure. A bad-JSON error and a
+  // schema error need different fixes — telling a model with malformed JSON to
+  // "fix the schema" sends it down the wrong path.
+  const jsonError = error.startsWith("invalid JSON") || error.startsWith("JSON parse");
+  const fix = jsonError
+    ? "The cause is malformed JSON — almost always an unescaped double quote, or a raw newline, " +
+      "inside a string value. Re-emit the SAME findings, but escape every double quote inside a " +
+      "string as \\\" and every newline as \\n so the whole thing is valid JSON."
+    : "Your output was valid JSON but did not match the required schema. Re-emit the SAME findings " +
+      "as an object with exactly the schema's required properties and no extra ones.";
   return [
-    "Your previous response could not be used:",
+    "Your previous message (directly above) was rejected — it did not produce usable output.",
     "",
-    `  Error: ${error}`,
+    `  Why it failed: ${error}`,
     "",
-    "Re-emit your response exactly conforming to the schema you were given.",
-    "Same content — only fix the structure. Output the JSON only, no prose, no fences.",
+    fix,
+    "Output the corrected JSON only — no prose, no markdown fences.",
   ].join("\n");
 }
 
@@ -154,14 +176,14 @@ export async function callLLM<T = unknown>(args: CallLLMArgs): Promise<LLMResult
       break;
     }
 
-    let parsed: unknown;
+    let extracted: Extracted | null = null;
     try {
-      parsed = extractJson(finalText);
+      extracted = extractJson(finalText);
     } catch (e) {
       lastError = `JSON parse: ${(e as Error).message}`;
     }
-    if (parsed !== undefined) {
-      if (validate(parsed)) {
+    if (extracted) {
+      if (validate(extracted.value)) {
         log.info("llm.done", {
           prompt_tokens: totalPrompt,
           completion_tokens: totalCompletion,
@@ -169,14 +191,23 @@ export async function callLLM<T = unknown>(args: CallLLMArgs): Promise<LLMResult
           tool_calls: toolCalls,
         });
         return {
-          validated: parsed as T,
+          validated: extracted.value as T,
           usage: { promptTokens: totalPrompt, completionTokens: totalCompletion, totalTokens: totalAll },
           healAttempts,
           toolCalls,
           rawText: lastText,
         };
       }
-      lastError = `schema: ${ajv.errorsText(validate.errors, { separator: "; " })}`;
+      // A clean parse that fails the schema is a genuine structure problem.
+      // But if we only salvaged a fragment (clean=false), the JSON itself was
+      // malformed — the schema error is misleading (it's validating a recovered
+      // sub-object). Heal on the real cause: invalid JSON, usually an unescaped
+      // quote or newline inside a string value.
+      lastError = extracted.clean
+        ? `schema: ${ajv.errorsText(validate.errors, { separator: "; " })}`
+        : `invalid JSON: your output did not parse as a whole — only a fragment was recoverable. ` +
+          `This is almost always an unescaped " or a raw newline inside a string value. ` +
+          `Escape every double quote as \\" and every newline as \\n.`;
     }
 
     if (attempt < healRetries) {

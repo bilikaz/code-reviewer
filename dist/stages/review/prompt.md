@@ -27,7 +27,9 @@ You receive (some sections may be absent on a given run):
 
 ## Anchoring rule
 
-Every finding anchors to a snippet you can quote verbatim from `<pr_diff>`, `<rendering_context>`, or a file you Read. The harness — not you — converts the snippet to a line number. Include `context_before` / `context_after` only when the snippet alone is ambiguous (e.g. a repeated `}` or import).
+Every finding anchors to a snippet you can quote verbatim from `<pr_diff>`, `<rendering_context>`, or a file you Read. The harness — not you — converts the snippet to a line number.
+
+`snippet` MUST be a **single line** — the one most specific line the finding is about — never a multi-line block. A single line is unique enough to locate and trivial to embed as valid JSON; multi-line snippets fail to anchor and are easy to mis-escape. If that one line repeats in the file, add `context_before` / `context_after` (also single lines) to disambiguate. `snippet`, `context_before`, and `context_after` are direct properties of the comment object — do not nest them.
 
 Findings about an **absent** thing ("should also validate Y") anchor to the most relevant existing line; explain in `body`.
 

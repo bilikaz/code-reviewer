@@ -2,6 +2,8 @@
 export function detectProvider(url) {
     if (/^mock:\/\//.test(url))
         return "mock";
+    if (/^local:\/\//.test(url))
+        return "local";
     if (/^https?:\/\/github\.com\/[^/]+\/[^/]+\/pull\/\d+/.test(url))
         return "github";
     if (/^https?:\/\/[^/]+\/[^/]+\/[^/]+\/-\/merge_requests\/\d+/.test(url))
