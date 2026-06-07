@@ -1,4 +1,4 @@
-#!/usr/bin/env -S node --experimental-transform-types --disable-warning=ExperimentalWarning
+#!/usr/bin/env node
 // Reviewer CLI.
 //
 // Subcommands:

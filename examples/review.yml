@@ -9,8 +9,11 @@
 #      identically for npm, yarn, and pnpm:
 #
 #        "devDependencies": {
-#          "@reviewer/cli": "github:bilikaz/code-reviewer#v0.1.0"
+#          "@reviewer/cli": "github:bilikaz/code-reviewer#v0.1.1"
 #        }
+#
+#      The package ships prebuilt JavaScript (dist/ is committed), so the
+#      install does no build step and needs no toolchain beyond your own.
 #
 #      - Public reviewer repo  -> this just works in CI, no extra auth.
 #      - Private reviewer repo -> the install step needs read access. Add a PAT

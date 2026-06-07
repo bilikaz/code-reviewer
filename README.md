@@ -33,17 +33,17 @@ The workflow builds the reviewer image from source on each run and triggers on e
 
 ## Quick start (npm dependency)
 
-For Node projects, consume the reviewer as a `devDependency` instead of building the image — the CLI runs directly (no Docker, no build step; it executes its TypeScript at runtime). Works with npm, yarn, or pnpm.
+For Node projects, consume the reviewer as a `devDependency` instead of building the image — no Docker required. Works with npm, yarn, or pnpm.
 
 Add it to the consumer project, pinned to a tag (the git form is the same for every package manager):
 
 ```json
 "devDependencies": {
-  "@reviewer/cli": "github:bilikaz/code-reviewer#v0.1.0"
+  "@reviewer/cli": "github:bilikaz/code-reviewer#v0.1.1"
 }
 ```
 
-Then copy [examples/review.yml](examples/review.yml) into `<your-project>/.github/workflows/` and set the same `LLM_URL` / `LLM_KEY` / `LLM_MODEL` secrets as above. If this reviewer repo is **private**, the consumer's install step needs a PAT — see the comments in that file.
+On install the package builds itself (a `prepare` step compiles `src/` to `dist/`), so the consumer ends up with plain JavaScript — Node refuses to run TypeScript from inside `node_modules`, so shipping compiled output is required. Then copy [examples/review.yml](examples/review.yml) into `<your-project>/.github/workflows/` and set the same `LLM_URL` / `LLM_KEY` / `LLM_MODEL` secrets as above. If this reviewer repo is **private**, the consumer's install step needs a PAT — see the comments in that file.
 
 Run it locally the same way:
 
@@ -51,7 +51,7 @@ Run it locally the same way:
 npx reviewer run --pr https://github.com/owner/repo/pull/123    # yarn: yarn reviewer ... | pnpm: pnpm exec reviewer ...
 ```
 
-Requires Node ≥24 in the consumer (the CLI uses TS transforms at runtime).
+Requires Node ≥24 in the consumer (used to build on install and to run).
 
 ## Local usage
 
@@ -98,10 +98,14 @@ All config is env-only and read once at startup. See [.env.example](.env.example
 ## Development
 
 ```bash
-pnpm install
+pnpm install       # also runs `prepare` -> builds dist/
 pnpm typecheck
+pnpm build         # tsc -> dist/ (+ copies prompt.md / schema.json assets)
+pnpm start --pr <url>   # run from source (node --experimental-transform-types)
 pnpm test          # builds the test image, mounts node_modules, runs vitest
 ```
+
+The package ships compiled JavaScript: `tsconfig.build.json` emits `src/` to `dist/`, and [scripts/copy-assets.mjs](scripts/copy-assets.mjs) copies the runtime `.md`/`.json` assets next to the compiled modules. `bin` and `files` both point at `dist/`; `dist/` is gitignored and regenerated on install. The Docker image is the exception — it runs the CLI from `src/` directly via the entrypoint, so it skips the build (`--ignore-scripts`).
 
 Tests require `tests/.env` (see [tests/.env.example](tests/.env.example)) — a real LLM endpoint is needed because the E2E suite drives the full pipeline against fixture repos via the `mock://` VCS provider.
 

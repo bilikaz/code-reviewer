@@ -1,0 +1,35 @@
+# Guards the committed build output. Because dist/ is checked in (so consumers
+# of the git dependency get prebuilt JS with no install-time build), it can
+# drift from src/ if someone edits source without rebuilding. This job rebuilds
+# and fails if the committed dist/ doesn't match.
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  dist-fresh:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - run: pnpm typecheck
+
+      - name: Rebuild dist and check it matches what's committed
+        run: |
+          pnpm build
+          if ! git diff --exit-code -- dist; then
+            echo "::error::dist/ is stale — run 'pnpm build' and commit the result." >&2
+            exit 1
+          fi
