@@ -24,7 +24,13 @@ jobs:
 
       - name: Run reviewer on this PR
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Default GITHUB_TOKEN can POST comments but, as a GitHub App
+          # (integration) token, cannot `resolveReviewThread` — so reconcile
+          # can't clean up addressed bot threads ("Resource not accessible by
+          # integration"). A user PAT can. Set REVIEWER_GH_TOKEN (fine-grained:
+          # Pull requests = read+write) to enable thread resolution; falls back
+          # to the default token (post-only) when unset.
+          GITHUB_TOKEN: ${{ secrets.REVIEWER_GH_TOKEN || secrets.GITHUB_TOKEN }}
           LLM_URL:      ${{ secrets.LLM_URL }}
           LLM_KEY:      ${{ secrets.LLM_KEY }}
           LLM_MODEL:    ${{ vars.LLM_MODEL }}

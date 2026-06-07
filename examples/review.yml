@@ -65,7 +65,12 @@ jobs:
 
       - name: Review this PR
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # The default GITHUB_TOKEN can post comments but, being a GitHub App
+          # (integration) token, can't resolve review threads — so the reviewer
+          # can't clean up addressed bot threads on follow-up pushes. To enable
+          # that, set a user PAT secret REVIEWER_GH_TOKEN (fine-grained:
+          # Pull requests = read+write). Falls back to the default token when unset.
+          GITHUB_TOKEN: ${{ secrets.REVIEWER_GH_TOKEN || secrets.GITHUB_TOKEN }}
           LLM_URL:      ${{ secrets.LLM_URL }}
           LLM_KEY:      ${{ secrets.LLM_KEY }}
           LLM_MODEL:    ${{ vars.LLM_MODEL }}

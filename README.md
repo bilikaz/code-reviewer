@@ -26,8 +26,9 @@ Copy [.github/workflows/review.yml](.github/workflows/review.yml) into your repo
 | Secret | `LLM_URL` | `https://<your_ip_or_domain>/v1` |
 | Secret | `LLM_KEY` | `sk-…` |
 | Variable | `LLM_MODEL` | `deepseek-ai/DeepSeek-V4-Flash` (optional — auto-detected if unset) |
+| Secret | `REVIEWER_GH_TOKEN` | optional PAT — see below |
 
-`GITHUB_TOKEN` is injected automatically.
+`GITHUB_TOKEN` is injected automatically and is enough to **post** comments. It can't **resolve** review threads, though: the default token is a GitHub App (integration) token, and `resolveReviewThread` isn't available to integrations ("Resource not accessible by integration"). So on follow-up pushes, reconcile decides a thread is addressed but can't clean it up. To enable thread resolution, add a user **PAT** as `REVIEWER_GH_TOKEN` (fine-grained: *Pull requests → read & write*, or classic `repo`); the workflow uses it when present and falls back to `GITHUB_TOKEN` otherwise.
 
 The workflow builds the reviewer image from source on each run and triggers on every PR open / synchronize / reopen. (A pre-built image on GHCR is planned — until then, consumers should vendor the Dockerfile or build from a tagged release.)
 
