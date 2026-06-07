@@ -1,0 +1,70 @@
+# Consumer-side PR review workflow.
+#
+# Copy this into a project that depends on the reviewer:
+#   <your-project>/.github/workflows/review.yml
+#
+# Prerequisites in that project:
+#
+#   1. Add the reviewer as a devDependency (pin to a tag). The git form works
+#      identically for npm, yarn, and pnpm:
+#
+#        "devDependencies": {
+#          "@reviewer/cli": "github:bilikaz/code-reviewer#v0.1.0"
+#        }
+#
+#      - Public reviewer repo  -> this just works in CI, no extra auth.
+#      - Private reviewer repo -> the install step needs read access. Add a PAT
+#        with `repo` scope as a secret (e.g. REVIEWER_INSTALL_TOKEN) and
+#        uncomment the git URL-rewrite step below.
+#
+#   2. Set these in Settings -> Secrets and variables -> Actions:
+#        Secret  LLM_URL    e.g. https://api.anthropic.com/v1
+#        Secret  LLM_KEY    sk-...
+#        Var     LLM_MODEL  optional; auto-detected from /models if unset
+#
+#      GITHUB_TOKEN is injected automatically and is enough to post review
+#      comments, given the `pull-requests: write` permission below.
+#
+# This file defaults to npm. To use yarn or pnpm, swap the marked steps —
+# see the "# yarn:" / "# pnpm:" notes on each.
+
+name: PR review
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents:      read
+  pull-requests: write
+
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Full history so `git diff base...head` and rename detection work.
+          fetch-depth: 0
+
+      # pnpm only: install pnpm before setup-node so its cache can resolve.
+      # - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24      # reviewer needs Node >=24 (TS transforms at runtime)
+          cache: npm            # yarn: cache: yarn   | pnpm: cache: pnpm
+
+      # Private reviewer repo only: let git authenticate the install.
+      # - run: git config --global url."https://x-access-token:${{ secrets.REVIEWER_INSTALL_TOKEN }}@github.com/".insteadOf "https://github.com/"
+
+      - run: npm ci             # yarn: yarn install --immutable | pnpm: pnpm install --frozen-lockfile
+
+      - name: Review this PR
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          LLM_URL:      ${{ secrets.LLM_URL }}
+          LLM_KEY:      ${{ secrets.LLM_KEY }}
+          LLM_MODEL:    ${{ vars.LLM_MODEL }}
+        # yarn: yarn reviewer run ...   | pnpm: pnpm exec reviewer run ...
+        run: npx reviewer run --pr "${{ github.event.pull_request.html_url }}"
