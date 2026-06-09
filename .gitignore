@@ -3,3 +3,7 @@ node_modules/
 .env.local
 *.log
 *.sh
+
+# Agent harness — developed here for context continuity, will be moved to its
+# own repo later. Has its own git; kept out of the reviewer repo.
+harness/

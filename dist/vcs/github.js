@@ -31,12 +31,21 @@ export class GitHubProvider {
         if (!m)
             throw new Error(`GitHubProvider: not a GitHub PR URL: ${url}`);
         const client = octokit ?? new Octokit({ auth: token });
-        // Under Actions the GITHUB_TOKEN is an App installation token —
-        // GET /user returns 403 — but the bot identity is fixed. Elsewhere
-        // (PATs etc.) we query /user normally.
-        const botLogin = process.env.GITHUB_ACTIONS === "true"
-            ? "github-actions[bot]"
-            : (await client.users.getAuthenticated()).data.login;
+        // The "bot" identity must match whatever account actually authors the
+        // comments, or the reconcile/verify step won't recognize its own prior
+        // threads. Resolve it from the token via GET /user — correct for user tokens
+        // and PATs, INCLUDING a user PAT used inside Actions. (The old
+        // `GITHUB_ACTIONS` shortcut forced "github-actions[bot]" there, so under a
+        // user token the comments came back classified "human" and reconcile got
+        // skipped.) Only the default Actions GITHUB_TOKEN — an App installation
+        // token — 403s on GET /user; fall back to the fixed bot login then.
+        let botLogin;
+        try {
+            botLogin = (await client.users.getAuthenticated()).data.login;
+        }
+        catch {
+            botLogin = "github-actions[bot]";
+        }
         return new GitHubProvider(client, m[1], m[2], parseInt(m[3], 10), botLogin);
     }
     async getPRMetadata() {
