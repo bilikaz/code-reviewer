@@ -1,6 +1,6 @@
 {
   "name": "@reviewer/cli",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "LLM-driven PR reviewer. Pluggable VCS destinations. OpenAI-compatible LLM API.",
   "type": "module",
   "packageManager": "pnpm@10.33.0",
