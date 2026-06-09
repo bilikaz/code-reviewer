@@ -8,6 +8,7 @@
     "reviewer": "dist/cli.js"
   },
   "files": ["dist"],
+  "publishConfig": { "access": "public" },
   "scripts": {
     "start": "node --experimental-transform-types --disable-warning=ExperimentalWarning src/cli.ts",
     "build": "tsc -p tsconfig.build.json && node scripts/copy-assets.mjs",
