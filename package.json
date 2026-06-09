@@ -1,6 +1,6 @@
 {
-  "name": "@reviewer/cli",
-  "version": "0.1.1",
+  "name": "@bilikaz/code-reviewer",
+  "version": "0.1.2",
   "description": "LLM-driven PR reviewer. Pluggable VCS destinations. OpenAI-compatible LLM API.",
   "type": "module",
   "packageManager": "pnpm@10.33.0",
@@ -8,6 +8,7 @@
     "reviewer": "dist/cli.js"
   },
   "files": ["dist"],
+  "publishConfig": { "access": "public" },
   "scripts": {
     "start": "node --experimental-transform-types --disable-warning=ExperimentalWarning src/cli.ts",
     "build": "tsc -p tsconfig.build.json && node scripts/copy-assets.mjs",
