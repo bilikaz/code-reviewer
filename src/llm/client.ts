@@ -100,7 +100,7 @@ export interface CallLLMArgs {
   systemSections: Section[];
   userSections: Section[];
   schema: object;
-  // When true, expose Read + Bash tools. Default true.
+  // When true, expose the read-only tools (Read, Grep, Ls, Glob, Tail). Default true.
   tools?: boolean;
 }
 

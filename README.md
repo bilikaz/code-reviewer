@@ -12,7 +12,7 @@ Four stages, run in order by `reviewer run`:
 
 1. **fetch** — PR metadata, changed files, diffs, prior bot threads, project standards
 2. **reconcile** — re-judge each unresolved bot thread against the new head; relocate on renames, auto-address on deletion (skipped on first run)
-3. **review** — LLM analyzes the diff with `Read` + `Bash` tools available, posts inline findings
+3. **review** — LLM analyzes the diff with read-only tools available (`Read`/`Grep`/`Ls`/`Glob`/`Tail`), posts inline findings
 4. **summarize** — derives final verdict (`approve` / `reject`), posts a summary comment
 
 Each stage is also addressable on its own (e.g. `reviewer review --pr <url>`).
@@ -79,7 +79,7 @@ docker run --rm -t --env-file .env -v "$PWD:/workspace" -w /workspace \
 
 `local://<base>` diffs `<base>...HEAD` (base defaults to `main`). Use `local://<branch-or-sha>` to pick a different base.
 
-> **Must run inside a container.** Local review gives the LLM the `Bash`/`Read` tools against the mounted checkout; the container is the sandbox. The CLI refuses `local://` unless it detects a container (`/.dockerenv` / `/run/.containerenv`, created by the runtime — not a flag a caller can set), so it can't hand an LLM shell access to a bare host.
+> **Must run inside a container.** Local review gives the LLM read-only file tools (`Read`/`Grep`/`Ls`/`Glob`/`Tail`) against the mounted checkout — no shell, but they can read any file the process can reach. The container is the sandbox. The CLI refuses `local://` unless it detects a container (`/.dockerenv` / `/run/.containerenv`, created by the runtime — not a flag a caller can set), so it can't hand an LLM file access to a bare host.
 
 ### Commands
 
@@ -141,7 +141,7 @@ src/
     reconcile/        re-judge prior bot threads
     review/           LLM review + inline findings
     summarize/        final verdict + summary comment
-  llm/                client (callLLM + resolveModel, schema healing), transport (HTTP + SSE), tools (Read/Bash)
+  llm/                client (callLLM + resolveModel, schema healing), transport (HTTP + SSE), tools (Read/Grep/Ls/Glob/Tail)
   providers/          Provider port + github / gitlab / bitbucket / local / mock adapters
   lib/                host-level helpers (git diffs, error normalization)
   logger/             Logger port + console / in-memory sinks
@@ -151,7 +151,7 @@ tests/
 docs/
   ARCHITECTURE.md     the map: structure, patterns, flows
   conventions/        portable engineering rules (naming, types placement, …)
-  adr/                dated architecture decision records
+  adr/                dated architecture decision records (scope: ADR-0000)
 ```
 
-Documentation is layered: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) is this repo's map, [docs/conventions/](docs/conventions/) holds the portable rule set (reusable across projects), and [docs/adr/](docs/adr/) is the decision log that adopts them.
+Documentation is layered: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) is this repo's map, [docs/conventions/](docs/conventions/) holds the portable rule set (reusable across projects), and [docs/adr/](docs/adr/) is the decision log that adopts them. The working procedure that maintains these layers is the root [CLAUDE.md](CLAUDE.md) — agent sessions read it on start.

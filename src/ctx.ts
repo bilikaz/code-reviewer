@@ -186,15 +186,15 @@ export function loadConfig(opts: CliOverrides): Config {
     case "mock":
       break;
     case "local":
-      // Local review gives the LLM the Bash/Read tools against the real
-      // checkout. Those tools assume a throwaway sandbox; running on a bare
-      // host would hand an LLM unsandboxed shell + file access to your
-      // machine. Require an actual container — detect it rather than trust an
-      // env flag (which any caller could set on the host).
+      // Local review gives the LLM read-only file tools (Read/Grep/Ls/Glob/Tail)
+      // against the real checkout. They can't run shell, but they can read any
+      // file the process can reach; on a bare host that's your whole machine.
+      // Require an actual container — detect it rather than trust an env flag
+      // (which any caller could set on the host).
       if (!inContainer()) {
         throw new Error(
-          "local review must run inside a container (the LLM gets shell + file access, " +
-          "and the container is the sandbox). Run:\n" +
+          "local review must run inside a container (the LLM can read any file the " +
+          "process can reach, and the container is the sandbox). Run:\n" +
           "  docker build -t reviewer .\n" +
           "  docker run --rm -v \"$PWD:/workspace\" -w /workspace --env-file .env \\\n" +
           "    reviewer review --pr local://main",

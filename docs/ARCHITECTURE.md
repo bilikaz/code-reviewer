@@ -6,7 +6,8 @@ process exit code *is* the verdict.
 
 This document is the map: structure as it is and the patterns the codebase commits to.
 Portable engineering rules live in [docs/conventions/](conventions/); dated decisions
-(and their trade-offs) in [docs/adr/](adr/).
+(and their trade-offs) in [docs/adr/](adr/). The working procedure that maintains all
+three layers is the root [/CLAUDE.md](../CLAUDE.md) — agent sessions read it on start.
 
 ---
 
@@ -37,7 +38,7 @@ flowchart TD
         direction LR
         client["client.ts<br/>callLLM + resolveModel"]
         wire["transport.ts<br/>HTTP + SSE wire"]
-        tools["tools/<br/>Read · Bash"]
+        tools["tools/<br/>Read · Grep · Ls · Glob · Tail"]
         client --> wire
         client --> tools
     end
@@ -54,7 +55,7 @@ Two external worlds, each behind one port:
   posted. Five adapters: GitHub, GitLab, Bitbucket, `local://` (console echo), `mock://`
   (test recorder).
 - **LLM** (`llm/`) — any OpenAI-compatible `/chat/completions` endpoint, streamed, with a
-  local tool loop (`Read`, `Bash`) and schema-validated JSON output.
+  local tool loop (`Read`, `Grep`, `Ls`, `Glob`, `Tail` — read-only, no shell) and schema-validated JSON output.
 
 Everything else is orchestration around a single state object.
 
@@ -172,6 +173,7 @@ One interface, five adapters. Key commitments:
 Tools follow a registry pattern: each tool is `{ schema, execute }` in its own file,
 collected in `tools/index.ts`. Tool errors are written *for the model* — explicit about
 what was received and what to do next, because weaker models loop on terse errors.
+The tool set itself is constrained — read-only, no shell (4.11, ADR-0014).
 
 ### 4.5 Prompt assembly — colocated assets + tagged slots (ADR-0006)
 
@@ -206,7 +208,7 @@ that genuinely needs reading code.
 
 ### 4.9 Safety gates are environmental, not flags
 
-`local://` review (LLM gets unsandboxed `Bash`/`Read`) requires an actual container,
+`local://` review (LLM gets read-only file tools `Read`/`Grep`/`Ls`/`Glob`/`Tail`, no shell) requires an actual container,
 detected via runtime-created files (`/.dockerenv`, `/run/.containerenv`) — not an env
 flag anyone could export. Same idea elsewhere: bot identity is derived from the token
 (`GET /user`), not from a CI-shaped env variable.
@@ -220,6 +222,15 @@ the mock for assertions. Assertions favor structural guarantees (what got posted
 bucket a file landed in) over fragile text matching of LLM output. Pure logic
 (summarize) is unit-tested with hand-built state — no LLM, no fixture.
 
+### 4.11 LLM tools: read-only, shell-free (ADR-0014)
+
+The model's input is untrusted PR content, and the container holds live VCS + LLM
+credentials — so no tool gives the model a shell. `Read`/`Tail`/`Ls`/`Glob` are pure
+`node:fs` operations; `Grep` spawns the `grep` binary with an argv array (`-e` keeps
+a leading-dash pattern data, not a flag). The invariant for any future tool: it may
+read; if it must spawn, it spawns a binary with an argv array — model input is never
+tokenized by a shell, so `|`, `;`, `$()` stay inert data.
+
 ## 5. Conventions
 
 The portable rule set (naming, types placement, consolidation, error handling,
@@ -230,7 +241,9 @@ configuration, logging, testing, documentation) lives in
 
 **Language / compiler.** TypeScript, `strict` + `noUncheckedIndexedAccess`, ESM,
 Node ≥ 24. Source runs directly via `--experimental-transform-types` (Docker, `pnpm
-start`); `dist/` is compiled output committed for npm consumers. Imports use explicit
+start`); `dist/` is compiled output committed for npm consumers — `pnpm build` wipes
+`dist/` before compiling, so deleted or renamed sources can't leave stale artifacts
+behind. Imports use explicit
 `.ts` extensions (`rewriteRelativeImportExtensions` handles emit). `import type` for
 type-only imports. Node built-ins use the `node:` prefix.
 
