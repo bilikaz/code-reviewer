@@ -10,3 +10,4 @@ harness/
 
 # Claude Code local config (permission grants etc.) — never committed
 .claude/
+CLAUDE.local.md
