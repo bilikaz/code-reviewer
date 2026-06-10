@@ -11,7 +11,7 @@
   "publishConfig": { "access": "public" },
   "scripts": {
     "start": "node --experimental-transform-types --disable-warning=ExperimentalWarning src/cli.ts",
-    "build": "tsc -p tsconfig.build.json && node scripts/copy-assets.mjs",
+    "build": "node -e \"fs.rmSync('dist',{recursive:true,force:true})\" && tsc -p tsconfig.build.json && node scripts/copy-assets.mjs",
     "typecheck": "tsc --noEmit",
     "test:inner": "vitest run",
     "test": "docker build --build-arg BUILD_TARGET=test -t reviewer-test . && docker run --rm --entrypoint pnpm --env-file tests/.env -v \"$PWD/node_modules:/reviewer/node_modules\" -w /reviewer reviewer-test run test:inner"

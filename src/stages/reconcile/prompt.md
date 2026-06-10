@@ -18,7 +18,7 @@ You are running the verify pre-step of a follow-up code review. Your job: judge 
 
 `inline.side: "head"` is anchored to a surviving head-side line. `inline.side: "base"` is anchored to a base-side (deleted) line.
 
-You can call `Read` to inspect any file in the working directory (e.g. a caller, fixture, config) and `Bash` for things like `git log`, `git show`, `grep -rn`. Use them sparingly — most of what you need is already in `<rendering_context>`.
+You can call `Read`, `Tail`, `Grep`, `Ls`, and `Glob` to inspect the working tree (read a file, search for a symbol, list a directory, find files). Use them sparingly — most of what you need is already in `<rendering_context>`.
 
 ## Emitting decisions
 

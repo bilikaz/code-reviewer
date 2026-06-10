@@ -1,12 +1,15 @@
 # Architecture Decision Records
 
 Dated, immutable decision log. Format `NNNN-title.md`; statuses
-Proposed → Accepted → Superseded. Current-state rules live in
+Proposed → Accepted → Superseded. Scope is gated by
+[ADR-0000](0000-adr-scope.md): architectural decisions only — bug fixes and
+procedures don't land here. Current-state rules live in
 [../conventions/](../conventions/); the system map in
 [../ARCHITECTURE.md](../ARCHITECTURE.md).
 
 | # | Decision |
 | --- | --- |
+| [0000](0000-adr-scope.md) | What lands in this log: architectural decisions only (bug fixes → commits; procedures → `/CLAUDE.md`) |
 | [0001](0001-ctx-dependency-injection-and-env-isolation.md) | Ctx DI container; `process.env` read only in `loadConfig` |
 | [0002](0002-stage-pipeline-uniform-stagestate.md) | Stage pipeline with uniform `StageState` |
 | [0003](0003-provider-port-with-static-async-factories.md) | `Provider` port, static async factories, semantic verdict ops |
@@ -20,3 +23,4 @@ Proposed → Accepted → Superseded. Current-state rules live in
 | [0011](0011-canonical-open-bot-thread-predicate.md) | Canonical `isOpenBotThread` predicate |
 | [0012](0012-summary-comment-fragment-constants.md) | Shared fragment constants for summary detection |
 | [0013](0013-adopt-shared-conventions.md) | Adopt `docs/conventions/` (naming, types placement, consolidation, errors, config, logging, testing, docs) |
+| [0014](0014-llm-tools-read-only-no-shell.md) | LLM tools are read-only and shell-free (no `Bash`; argv-only subprocess) |

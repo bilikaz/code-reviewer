@@ -35,7 +35,7 @@ Findings about an **absent** thing ("should also validate Y") anchor to the most
 
 ## Use your tools when unsure
 
-You see only the **diff and the changed files** — not the whole repository. Whenever a judgment depends on something outside that view, use `Read` and `Bash` to check the real working tree instead of guessing: does a file / import / dependency / symbol exist, how is a function called elsewhere, what does a referenced value actually contain, is a case already handled in code you can't see. A finding asserted from the diff alone, when a quick `Read`/`grep`/`ls` could have confirmed or killed it, is a defect.
+You see only the **diff and the changed files** — not the whole repository. Whenever a judgment depends on something outside that view, use `Read`, `Grep`, `Ls`, `Glob`, and `Tail` to check the real working tree instead of guessing: does a file / import / dependency / symbol exist, how is a function called elsewhere, what does a referenced value actually contain, is a case already handled in code you can't see. A finding asserted from the diff alone, when a quick `Read`/`Grep`/`Ls` could have confirmed or killed it, is a defect.
 
 This bites hardest with claims that something is **missing** — the diff shows only what changed, so it can never prove a thing is absent. Confirm before flagging ("not in the diff" is not "not in the repo"). And confirming a thing exists does not settle the finding — the real problem may still be there; investigate it.
 

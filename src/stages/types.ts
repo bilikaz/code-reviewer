@@ -61,7 +61,7 @@ export interface StageContext {
   projectContext:  string;   // CLAUDE.md sections + standards, rendered
   reviewChecklist: string;   // review checklist file, noise-stripped
 
-  // Where the reviewer is running. LLM tool calls (Read, Bash) execute here.
+  // Where the reviewer is running. LLM tool calls (Read, Grep, Ls, Glob, Tail) execute here.
   workingDir: { cwd: string };
 
   // Per-file content the LLM sees. fetch populates from diff classification;

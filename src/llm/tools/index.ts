@@ -12,13 +12,21 @@
 
 import { errorMessage } from "../../lib/errors.ts";
 import type { ToolCall } from "../types.ts";
-import { bashTool } from "./bash.ts";
+import { globTool } from "./glob.ts";
+import { grepTool } from "./grep.ts";
+import { lsTool } from "./ls.ts";
 import { readTool } from "./read.ts";
+import { tailTool } from "./tail.ts";
 import type { Tool, ToolResult } from "./types.ts";
 
 export type { ToolResult } from "./types.ts";
 
-const TOOLS: Tool[] = [readTool, bashTool];
+// Read-only navigation only — no shell. A `Bash` tool was removed deliberately:
+// `bash -lc` (and even `git -c core.pager=…`) is arbitrary command execution,
+// and the review input is untrusted PR content while the container holds live
+// VCS + LLM credentials. These tools take structured args and never spawn a
+// shell, so the same input is inert data. Keep it that way.
+const TOOLS: Tool[] = [readTool, grepTool, tailTool, lsTool, globTool];
 
 const BY_NAME = new Map(TOOLS.map((t) => [t.schema.function.name, t]));
 const VALID_NAMES = TOOLS.map((t) => t.schema.function.name);

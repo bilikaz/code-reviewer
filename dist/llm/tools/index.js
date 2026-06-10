@@ -10,9 +10,17 @@
 // Add a new tool: create tools/<name>.ts exporting `<name>Tool: Tool`, then
 // add it to the TOOLS array below.
 import { errorMessage } from "../../lib/errors.js";
-import { bashTool } from "./bash.js";
+import { globTool } from "./glob.js";
+import { grepTool } from "./grep.js";
+import { lsTool } from "./ls.js";
 import { readTool } from "./read.js";
-const TOOLS = [readTool, bashTool];
+import { tailTool } from "./tail.js";
+// Read-only navigation only — no shell. A `Bash` tool was removed deliberately:
+// `bash -lc` (and even `git -c core.pager=…`) is arbitrary command execution,
+// and the review input is untrusted PR content while the container holds live
+// VCS + LLM credentials. These tools take structured args and never spawn a
+// shell, so the same input is inert data. Keep it that way.
+const TOOLS = [readTool, grepTool, tailTool, lsTool, globTool];
 const BY_NAME = new Map(TOOLS.map((t) => [t.schema.function.name, t]));
 const VALID_NAMES = TOOLS.map((t) => t.schema.function.name);
 export const TOOL_SCHEMAS = TOOLS.map((t) => t.schema);
