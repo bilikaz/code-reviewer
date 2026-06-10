@@ -7,28 +7,15 @@
 // after to disambiguate) and we do the line-number work here.
 
 import { existsSync, readFileSync } from "node:fs";
-import { resolve } from "node:path";
 
 import type { Ctx } from "../../ctx.ts";
-import { callLLM, type Section } from "../../llm/call.ts";
-import { hasRendering, renderRenderingContext } from "../shared.ts";
+import { errorMessage } from "../../lib/errors.ts";
+import type { Logger } from "../../logger/index.ts";
+import { callLLM } from "../../llm/client.ts";
+import { baseSystemSections, baseUserSections, llmStageMetric, loadPromptAssets, SLOT } from "../shared.ts";
 import type { ReviewFinding, StageState } from "../types.ts";
 
-const HERE = import.meta.dirname;
-const PROMPT = readFileSync(resolve(HERE, "prompt.md"), "utf-8");
-const SCHEMA_TEXT = readFileSync(resolve(HERE, "schema.json"), "utf-8");
-const SCHEMA = JSON.parse(SCHEMA_TEXT) as object;
-
-const SLOT = {
-  outputSchema:     "output_schema",
-  projectContext:   "project_context",
-  prMetadata:       "pr_metadata",
-  prDiff:           "pr_diff",
-  prComments:       "pr_comments",
-  threadDecisions:  "thread_decisions",
-  reviewChecklist:  "review_checklist",
-  renderingContext: "rendering_context",
-} as const;
+const ASSETS = loadPromptAssets(import.meta.dirname);
 
 interface ReviewPayload {
   comments: ReviewFinding[];
@@ -38,31 +25,14 @@ export async function runReview(ctx: Ctx, state: StageState): Promise<StageState
   const t0 = Date.now();
   const log = ctx.logger.child("review");
 
-  const systemSections: Section[] = [
-    { tag: "", content: PROMPT },
-    { tag: SLOT.outputSchema, content: SCHEMA_TEXT },
-  ];
-  if (state.context.projectContext.trim()) {
-    systemSections.push({ tag: SLOT.projectContext, content: state.context.projectContext });
-  }
-  if (state.context.reviewChecklist) {
-    systemSections.push({ tag: SLOT.reviewChecklist, content: state.context.reviewChecklist });
-  }
-  if (hasRendering(state.context.rendering)) {
-    systemSections.push({ tag: SLOT.renderingContext, content: renderRenderingContext(state.context.rendering) });
-  }
-
-  const userSections: Section[] = [
-    { tag: SLOT.prMetadata, content: JSON.stringify(state.meta, null, 2) },
-    { tag: SLOT.prDiff, content: state.diff },
-    { tag: SLOT.prComments, content: JSON.stringify(state.comments, null, 2) },
-  ];
+  const systemSections = baseSystemSections(ASSETS, state, { includeChecklist: true });
+  const userSections = baseUserSections(state, state.comments);
   if (state.decisions?.length) {
     userSections.push({ tag: SLOT.threadDecisions, content: JSON.stringify(state.decisions, null, 2) });
   }
 
   const result = await callLLM<ReviewPayload>({
-    ctx, stage: "review", systemSections, userSections, schema: SCHEMA,
+    ctx, stage: "review", systemSections, userSections, schema: ASSETS.schema,
   });
   const findings = result.validated.comments;
 
@@ -72,13 +42,7 @@ export async function runReview(ctx: Ctx, state: StageState): Promise<StageState
   return {
     ...state,
     findings,
-    metrics: [...state.metrics, {
-      stage: "review",
-      durationMs: Date.now() - t0,
-      tokens: { input: result.usage.promptTokens, output: result.usage.completionTokens, total: result.usage.totalTokens },
-      healAttempts: result.healAttempts,
-      toolCalls: result.toolCalls,
-    }],
+    metrics: [...state.metrics, llmStageMetric("review", t0, result)],
   };
 }
 
@@ -91,7 +55,7 @@ async function postFindings(ctx: Ctx, findings: ReviewFinding[]): Promise<void> 
     try {
       await postFinding(ctx, log, c);
     } catch (e) {
-      log.error("post.failed", { path: c.path, error: (e as Error).message });
+      log.error("post.failed", { path: c.path, error: errorMessage(e) });
     }
   }
 }
@@ -99,11 +63,11 @@ async function postFindings(ctx: Ctx, findings: ReviewFinding[]): Promise<void> 
 // Anchor the finding to a head-side line and post it. If the file is gone
 // we degrade to a top-level summary comment; if it exists but the snippet
 // can't be uniquely located we post on line 1 with a banner explaining why.
-async function postFinding(ctx: Ctx, log: ReturnType<Ctx["logger"]["child"]>, c: ReviewFinding): Promise<void> {
+async function postFinding(ctx: Ctx, log: Logger, c: ReviewFinding): Promise<void> {
   if (!c.path || !existsSync(c.path)) {
     const body = wrapWithBanner(c.snippet, c.body, "anchor not located");
     log.warn("anchor.unresolved", { path: c.path, fallback: "top_level" });
-    await ctx.vcs.postSummaryComment(body);
+    await ctx.provider.postSummaryComment(body);
     return;
   }
 
@@ -114,7 +78,7 @@ async function postFinding(ctx: Ctx, log: ReturnType<Ctx["logger"]["child"]>, c:
     log.warn("anchor.unresolved", { path: c.path, fallback: "line_1" });
     body = wrapWithBanner(c.snippet, c.body, "snippet not uniquely matched on head");
   }
-  await ctx.vcs.postInlineComment({ path: c.path, line, body, severity: c.severity });
+  await ctx.provider.postInlineComment({ path: c.path, line, body, severity: c.severity });
 }
 
 // ---- anchor resolution --------------------------------------------------

@@ -11,18 +11,18 @@ import { buildTestCtx } from "../helpers.ts";
 
 describe("review", () => {
   it("clean: produces no blocking findings", async () => {
-    const { ctx, vcs } = await buildTestCtx("review/clean");
+    const { ctx, provider } = await buildTestCtx("review/clean");
     let state = await runFetch(ctx);
     state = await runReview(ctx, state);
 
     const blockingSeverities = new Set(ctx.config.review.verdictGuard.approveBlockingSeverities);
     const blocking = (state.findings ?? []).filter((f) => blockingSeverities.has(f.severity));
     expect(blocking).toHaveLength(0);
-    expect(vcs.postedInline).toHaveLength(0);
+    expect(provider.postedInline).toHaveLength(0);
   });
 
   it("exposed_secret: flags blocker findings + posts them inline", async () => {
-    const { ctx, vcs } = await buildTestCtx("review/exposed_secret");
+    const { ctx, provider } = await buildTestCtx("review/exposed_secret");
     let state = await runFetch(ctx);
     state = await runReview(ctx, state);
 
@@ -31,18 +31,18 @@ describe("review", () => {
     const blockers = findings.filter((f) => f.severity === "blocker");
     expect(blockers.length).toBeGreaterThanOrEqual(1);
     // Every blocker goes to inline post (review.ts filters by verdictGuard).
-    expect(vcs.postedInline.length).toBeGreaterThanOrEqual(blockers.length);
-    expect(vcs.postedInline.every((p) => p.c.path === "src/payments.ts")).toBe(true);
+    expect(provider.postedInline.length).toBeGreaterThanOrEqual(blockers.length);
+    expect(provider.postedInline.every((p) => p.c.path === "src/payments.ts")).toBe(true);
   });
 
   it("dangerous_shell: flags at least one warning or blocker", async () => {
-    const { ctx, vcs } = await buildTestCtx("review/dangerous_shell");
+    const { ctx, provider } = await buildTestCtx("review/dangerous_shell");
     let state = await runFetch(ctx);
     state = await runReview(ctx, state);
 
     const elevated = (state.findings ?? []).filter((f) => f.severity === "warning" || f.severity === "blocker");
     expect(elevated.length).toBeGreaterThan(0);
-    expect(vcs.postedInline.length).toBeGreaterThan(0);
+    expect(provider.postedInline.length).toBeGreaterThan(0);
   });
 
   it("non_allowlisted_text: .jsx file lands in binary_files; LLM may Read it", async () => {

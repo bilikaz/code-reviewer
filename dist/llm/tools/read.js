@@ -5,7 +5,8 @@
 // with a ready-to-copy `sed` command for the next chunk. Smaller models
 // loop on big files when they can't see where to ask next.
 import { readFile } from "node:fs/promises";
-import { cap } from "./shared.js";
+import { errorMessage } from "../../lib/errors.js";
+import { cap } from "./types.js";
 const MAX_LINES = 300;
 export const readTool = {
     schema: {
@@ -46,7 +47,7 @@ export const readTool = {
         catch (e) {
             return {
                 ok: false,
-                output: `error reading ${path}: ${e.message}. ` +
+                output: `error reading ${path}: ${errorMessage(e)}. ` +
                     `Check the path (relative to the working directory) and try Bash ls/find if unsure.`,
             };
         }

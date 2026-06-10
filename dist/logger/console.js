@@ -1,5 +1,6 @@
 // Default sink: pretty indented output to stderr. Each event on its own
 // line, structured `data` rendered as indented JSON below it.
+import { joinScope } from "./types.js";
 const LEVEL_TAG = {
     debug: "DBG",
     info: "INF",
@@ -39,6 +40,6 @@ export class ConsoleLogger {
         process.stderr.write(chunk);
     }
     child(scope) {
-        return new ConsoleLogger(this.scope ? `${this.scope}.${scope}` : scope);
+        return new ConsoleLogger(joinScope(this.scope, scope));
     }
 }

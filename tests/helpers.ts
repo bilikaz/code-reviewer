@@ -4,16 +4,16 @@
 // (LLM_URL, optionally LLM_KEY / LLM_MODEL). Each test:
 //   - builds a Ctx targeting a mock://<scenario> URL,
 //   - drives one or more stages,
-//   - asserts on what the MockVcsProvider received + on the returned
+//   - asserts on what the MockProvider received + on the returned
 //     StageState.
 
-import { buildCtx, type Ctx } from "../src/ctx.ts";
+import { buildCtx, REVIEW_DEFAULTS, type Ctx } from "../src/ctx.ts";
 import { MemoryLogger } from "../src/logger/memory.ts";
-import type { MockVcsProvider } from "../src/vcs/mock.ts";
+import type { MockProvider } from "../src/providers/mock.ts";
 
 export interface TestCtx {
   ctx: Ctx;
-  vcs: MockVcsProvider;
+  provider: MockProvider;
   logger: MemoryLogger;
 }
 
@@ -28,16 +28,8 @@ export interface TestCtxOpts {
 export async function buildTestCtx(scenario: string, opts: TestCtxOpts = {}): Promise<TestCtx> {
   const logger = new MemoryLogger();
   const review = opts.includeExtensions !== undefined
-    ? {
-        diffFilter: {
-          includeExtensions: opts.includeExtensions,
-          fullFileThresholdLines: 800,
-          bigFileHeaderLines: 30,
-          fullFileCoverageThreshold: 0.8,
-          narrowContextLines: 3,
-        },
-      }
+    ? { diffFilter: { ...REVIEW_DEFAULTS.diffFilter, includeExtensions: opts.includeExtensions } }
     : undefined;
   const ctx = await buildCtx({ prUrl: `mock://${scenario}`, logger, review });
-  return { ctx, vcs: ctx.vcs as MockVcsProvider, logger };
+  return { ctx, provider: ctx.provider as MockProvider, logger };
 }

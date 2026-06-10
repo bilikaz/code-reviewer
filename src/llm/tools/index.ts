@@ -10,12 +10,13 @@
 // Add a new tool: create tools/<name>.ts exporting `<name>Tool: Tool`, then
 // add it to the TOOLS array below.
 
-import type { ToolCall } from "../client.ts";
+import { errorMessage } from "../../lib/errors.ts";
+import type { ToolCall } from "../types.ts";
 import { bashTool } from "./bash.ts";
 import { readTool } from "./read.ts";
-import type { Tool, ToolResult } from "./shared.ts";
+import type { Tool, ToolResult } from "./types.ts";
 
-export type { ToolResult } from "./shared.ts";
+export type { ToolResult } from "./types.ts";
 
 const TOOLS: Tool[] = [readTool, bashTool];
 
@@ -45,7 +46,7 @@ export async function execTool(call: ToolCall): Promise<ToolResult> {
         `tool call rejected: arguments are not valid JSON.`,
         `Tool: ${name}`,
         `Received arguments: ${call.function.arguments}`,
-        `Parse error: ${(e as Error).message}`,
+        `Parse error: ${errorMessage(e)}`,
         `Retry with a valid JSON object matching the tool's schema.`,
       ].join("\n"),
     };

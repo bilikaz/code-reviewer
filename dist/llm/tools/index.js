@@ -9,6 +9,7 @@
 //
 // Add a new tool: create tools/<name>.ts exporting `<name>Tool: Tool`, then
 // add it to the TOOLS array below.
+import { errorMessage } from "../../lib/errors.js";
 import { bashTool } from "./bash.js";
 import { readTool } from "./read.js";
 const TOOLS = [readTool, bashTool];
@@ -35,7 +36,7 @@ export async function execTool(call) {
                 `tool call rejected: arguments are not valid JSON.`,
                 `Tool: ${name}`,
                 `Received arguments: ${call.function.arguments}`,
-                `Parse error: ${e.message}`,
+                `Parse error: ${errorMessage(e)}`,
                 `Retry with a valid JSON object matching the tool's schema.`,
             ].join("\n"),
         };

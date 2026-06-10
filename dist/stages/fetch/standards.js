@@ -20,7 +20,7 @@
 //         db.query("SELECT * FROM users WHERE id = ?", [userId]);
 import { existsSync, readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
-import YAML from "yaml";
+import { parse as parseYaml } from "yaml";
 export function loadStandards(standardsRoot, log) {
     if (!standardsRoot)
         return null;
@@ -30,7 +30,7 @@ export function loadStandards(standardsRoot, log) {
         log.warn("standards.index_missing", { path: indexPath });
         return null;
     }
-    const index = YAML.parse(readFileSync(indexPath, "utf-8"));
+    const index = parseYaml(readFileSync(indexPath, "utf-8"));
     if (!index?.topics)
         return { topics: [] };
     const topics = [];
@@ -40,7 +40,7 @@ export function loadStandards(standardsRoot, log) {
             log.warn("standards.topic_missing", { file: entry.file });
             continue;
         }
-        const parsed = YAML.parse(readFileSync(filePath, "utf-8"));
+        const parsed = parseYaml(readFileSync(filePath, "utf-8"));
         topics.push({
             description: entry.description ?? entry.file,
             rules: parsed?.rules ?? [],

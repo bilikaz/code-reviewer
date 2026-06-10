@@ -20,10 +20,12 @@
 //   --llm-key <key>     overrides LLM_KEY
 //   --llm-model <name>  overrides LLM_MODEL (otherwise auto-detected)
 import { buildCtx } from "./ctx.js";
+import { errorMessage } from "./lib/errors.js";
 import { runFetch } from "./stages/fetch/index.js";
 import { runReconcile } from "./stages/reconcile/index.js";
 import { runReview } from "./stages/review/index.js";
 import { runSummarize } from "./stages/summarize/index.js";
+import { isOpenBotThread } from "./providers/types.js";
 const FLAG_ALIASES = {
     "--pr": "pr",
     "--llm-url": "llmUrl",
@@ -69,7 +71,7 @@ function buildOverrides(flags) {
 }
 // ---- Pipeline orchestration --------------------------------------------
 function hasUnresolvedBotThreads(state) {
-    return state.comments.some((c) => c.by === "bot" && c.inline && !c.resolved && !c.parentId);
+    return state.comments.some(isOpenBotThread);
 }
 async function runCommand(command, ctx) {
     switch (command) {
@@ -113,6 +115,6 @@ try {
         process.exit(1);
 }
 catch (e) {
-    ctx.logger.error("cli.fatal", { error: e.message });
+    ctx.logger.error("cli.fatal", { error: errorMessage(e) });
     process.exit(1);
 }

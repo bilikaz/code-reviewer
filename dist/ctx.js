@@ -1,7 +1,7 @@
 // Ctx — dependency-injection container. Built once at CLI entry, passed to
 // every stage. Holds:
 //   - config: immutable settings (all env reads + CLI overrides live here)
-//   - vcs:    instantiated provider (already authenticated)
+//   - provider: instantiated review-platform adapter (already authenticated)
 //   - logger: structured logger (swap sinks here)
 //
 // Single rule: process.env is read ONLY in loadConfig(). Everything
@@ -10,15 +10,17 @@
 // .env loading.
 import { existsSync } from "node:fs";
 import { ConsoleLogger } from "./logger/console.js";
-import { resolveModel } from "./llm/model.js";
-import { BitbucketProvider } from "./vcs/bitbucket.js";
-import { GitHubProvider } from "./vcs/github.js";
-import { GitLabProvider } from "./vcs/gitlab.js";
-import { LocalVcsProvider } from "./vcs/local.js";
-import { MockVcsProvider } from "./vcs/mock.js";
-import { detectProvider } from "./vcs/types.js";
+import { resolveModel } from "./llm/client.js";
+import { BitbucketProvider } from "./providers/bitbucket.js";
+import { GitHubProvider } from "./providers/github.js";
+import { GitLabProvider } from "./providers/gitlab.js";
+import { LocalProvider } from "./providers/local.js";
+import { MockProvider } from "./providers/mock.js";
+import { detectProvider } from "./providers/types.js";
 // ---- Defaults ------------------------------------------------------------
-const REVIEW_DEFAULTS = {
+// Exported so tests build their configs from the real defaults instead of
+// re-typing them (see docs/conventions/configuration.md).
+export const REVIEW_DEFAULTS = {
     diffFilter: {
         includeExtensions: [],
         fullFileThresholdLines: 800,
@@ -45,6 +47,9 @@ function asNumber(v, fallback) {
         return fallback;
     const n = Number(v);
     return Number.isFinite(n) ? n : fallback;
+}
+function asBool(v) {
+    return v === "1" || (v ?? "").toLowerCase() === "true";
 }
 function requireField(value, name, hint) {
     if (!value)
@@ -77,7 +82,7 @@ export function loadConfig(opts) {
             // models will simply finish well under the cap.
             maxOutputTokens: asNumber(e.LLM_MAX_OUTPUT_TOKENS, 32_768),
             healRetries: asNumber(e.LLM_HEAL_RETRIES, 2),
-            debug: pick(e.LLM_DEBUG) === "1" || pick(e.LLM_DEBUG).toLowerCase() === "true",
+            debug: asBool(e.LLM_DEBUG),
         },
         github: { token: pick(e.GITHUB_TOKEN, e.GH_TOKEN) },
         gitlab: { token: pick(e.GITLAB_TOKEN), baseUrl: pick(e.GITLAB_BASE_URL) },
@@ -115,20 +120,20 @@ export function loadConfig(opts) {
     return config;
 }
 // ---- VCS construction (plain dispatch — no env reads) -------------------
-function makeVcs(c) {
+function makeProvider(c) {
     switch (c.pr.provider) {
         case "github": return GitHubProvider.create(c);
         case "gitlab": return GitLabProvider.create(c);
         case "bitbucket": return BitbucketProvider.create(c);
-        case "mock": return MockVcsProvider.create(c);
-        case "local": return LocalVcsProvider.create(c);
+        case "mock": return MockProvider.create(c);
+        case "local": return LocalProvider.create(c);
     }
 }
 // ---- buildCtx (thin orchestrator) ---------------------------------------
 export async function buildCtx(opts) {
     const config = loadConfig(opts);
-    const [vcs] = await Promise.all([
-        makeVcs(config),
+    const [provider] = await Promise.all([
+        makeProvider(config),
         (async () => {
             if (!config.llm.model) {
                 config.llm.model = await resolveModel({
@@ -140,7 +145,7 @@ export async function buildCtx(opts) {
     ]);
     return {
         config,
-        vcs,
+        provider,
         logger: opts.logger ?? new ConsoleLogger(),
     };
 }

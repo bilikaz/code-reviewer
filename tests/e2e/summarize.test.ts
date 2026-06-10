@@ -1,38 +1,30 @@
 // Summarize verdict logic — unit-style, no LLM, no fixture.
 //
 // Each test hand-builds a StageState, points runSummarize at a bare
-// MockVcsProvider, and asserts on the returned verdict + recorded side effects.
+// MockProvider, and asserts on the returned verdict + recorded side effects.
 
 import { describe, it, expect } from "vitest";
 
-import type { Config, Ctx } from "../../src/ctx.ts";
+import { REVIEW_DEFAULTS, type Config, type Ctx } from "../../src/ctx.ts";
 import { MemoryLogger } from "../../src/logger/memory.ts";
 import { runSummarize } from "../../src/stages/summarize/index.ts";
 import { emptyRenderingContext, type StageState } from "../../src/stages/types.ts";
-import { MockVcsProvider } from "../../src/vcs/mock.ts";
-import type { PRComment } from "../../src/vcs/types.ts";
+import { MockProvider } from "../../src/providers/mock.ts";
+import type { PRComment } from "../../src/providers/types.ts";
 
 // ---- Minimal Ctx + StageState builders ---------------------------------
 
 function makeCtx(opts: { charLimit?: number } = {}): Ctx {
-  const vcs = MockVcsProvider.empty();
+  const provider = MockProvider.empty();
   const config: Config = {
     pr: { url: "mock://summarize", provider: "mock" },
     llm: { baseUrl: "", apiKey: "", model: "", temperature: 0.2, maxOutputTokens: 8192, healRetries: 2, debug: false },
     github:    { token: "" },
     gitlab:    { token: "", baseUrl: "" },
     bitbucket: { token: "", baseUrl: "" },
-    review: {
-      diffFilter: { includeExtensions: [], fullFileThresholdLines: 800, bigFileHeaderLines: 30, fullFileCoverageThreshold: 0.8, narrowContextLines: 3 },
-      verdictGuard: { approveBlockingSeverities: ["warning", "blocker"] },
-      standardsRoot: "",
-      projectContext: { source: "", sections: [] },
-      reviewChecklistPath: "",
-      preloadedFileMaxBytes: 200_000,
-      summaryCommentCharLimit: opts.charLimit ?? 200,
-    },
+    review: { ...REVIEW_DEFAULTS, summaryCommentCharLimit: opts.charLimit ?? 200 },
   };
-  return { config, vcs, logger: new MemoryLogger() };
+  return { config, provider, logger: new MemoryLogger() };
 }
 
 function baseState(overrides: Partial<StageState> = {}): StageState {
@@ -68,9 +60,9 @@ describe("summarize", () => {
     expect(out.verdict?.unaddressedThreadCount).toBe(0);
     expect(out.verdict?.fatal).toBe(false);
 
-    const vcs = ctx.vcs as MockVcsProvider;
-    expect(vcs.verdicts).toHaveLength(1);
-    expect(vcs.verdicts[0]!.verdict).toBe("approve");
+    const recorder = ctx.provider as MockProvider;
+    expect(recorder.verdicts).toHaveLength(1);
+    expect(recorder.verdicts[0]!.verdict).toBe("approve");
   });
 
   it("requests changes when a blocker finding is present", async () => {
@@ -146,8 +138,8 @@ describe("summarize", () => {
     });
     await runSummarize(ctx, state);
 
-    const vcs = ctx.vcs as MockVcsProvider;
-    const summaryArg = vcs.verdicts[0]!.summary ?? "";
+    const recorder = ctx.provider as MockProvider;
+    const summaryArg = recorder.verdicts[0]!.summary ?? "";
     // ellipsis present → truncation happened
     expect(summaryArg).toContain("…");
     // truncated chunk should be roughly cap+1 'a's (cap=50 + …)

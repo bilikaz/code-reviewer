@@ -1,7 +1,7 @@
 // Ctx — dependency-injection container. Built once at CLI entry, passed to
 // every stage. Holds:
 //   - config: immutable settings (all env reads + CLI overrides live here)
-//   - vcs:    instantiated provider (already authenticated)
+//   - provider: instantiated review-platform adapter (already authenticated)
 //   - logger: structured logger (swap sinks here)
 //
 // Single rule: process.env is read ONLY in loadConfig(). Everything
@@ -13,14 +13,14 @@ import { existsSync } from "node:fs";
 
 import { ConsoleLogger } from "./logger/console.ts";
 import type { Logger } from "./logger/index.ts";
-import { resolveModel } from "./llm/model.ts";
-import { BitbucketProvider } from "./vcs/bitbucket.ts";
-import { GitHubProvider } from "./vcs/github.ts";
-import { GitLabProvider } from "./vcs/gitlab.ts";
-import { LocalVcsProvider } from "./vcs/local.ts";
-import { MockVcsProvider } from "./vcs/mock.ts";
-import type { ProviderKind, VcsProvider } from "./vcs/types.ts";
-import { detectProvider } from "./vcs/types.ts";
+import { resolveModel } from "./llm/client.ts";
+import { BitbucketProvider } from "./providers/bitbucket.ts";
+import { GitHubProvider } from "./providers/github.ts";
+import { GitLabProvider } from "./providers/gitlab.ts";
+import { LocalProvider } from "./providers/local.ts";
+import { MockProvider } from "./providers/mock.ts";
+import type { ProviderKind, Provider } from "./providers/types.ts";
+import { detectProvider } from "./providers/types.ts";
 
 // ---- Config shape -------------------------------------------------------
 
@@ -75,7 +75,7 @@ export interface Config {
 
 export interface Ctx {
   config: Config;
-  vcs: VcsProvider;
+  provider: Provider;
   logger: Logger;
 }
 
@@ -92,7 +92,9 @@ export interface CliOverrides {
 
 // ---- Defaults ------------------------------------------------------------
 
-const REVIEW_DEFAULTS: ReviewConfig = {
+// Exported so tests build their configs from the real defaults instead of
+// re-typing them (see docs/conventions/configuration.md).
+export const REVIEW_DEFAULTS: ReviewConfig = {
   diffFilter: {
     includeExtensions: [],
     fullFileThresholdLines: 800,
@@ -119,6 +121,10 @@ function asNumber(v: string | undefined, fallback: number): number {
   if (v === undefined || v === "") return fallback;
   const n = Number(v);
   return Number.isFinite(n) ? n : fallback;
+}
+
+function asBool(v: string | undefined): boolean {
+  return v === "1" || (v ?? "").toLowerCase() === "true";
 }
 
 function requireField(value: string, name: string, hint: string): string {
@@ -158,7 +164,7 @@ export function loadConfig(opts: CliOverrides): Config {
       // models will simply finish well under the cap.
       maxOutputTokens: asNumber(e.LLM_MAX_OUTPUT_TOKENS, 32_768),
       healRetries: asNumber(e.LLM_HEAL_RETRIES, 2),
-      debug: pick(e.LLM_DEBUG) === "1" || pick(e.LLM_DEBUG).toLowerCase() === "true",
+      debug: asBool(e.LLM_DEBUG),
     },
     github:    { token: pick(e.GITHUB_TOKEN, e.GH_TOKEN) },
     gitlab:    { token: pick(e.GITLAB_TOKEN),    baseUrl: pick(e.GITLAB_BASE_URL) },
@@ -202,13 +208,13 @@ export function loadConfig(opts: CliOverrides): Config {
 
 // ---- VCS construction (plain dispatch — no env reads) -------------------
 
-function makeVcs(c: Config): Promise<VcsProvider> {
+function makeProvider(c: Config): Promise<Provider> {
   switch (c.pr.provider) {
     case "github":    return GitHubProvider.create(c);
     case "gitlab":    return GitLabProvider.create(c);
     case "bitbucket": return BitbucketProvider.create(c);
-    case "mock":      return MockVcsProvider.create(c);
-    case "local":     return LocalVcsProvider.create(c);
+    case "mock":      return MockProvider.create(c);
+    case "local":     return LocalProvider.create(c);
   }
 }
 
@@ -216,8 +222,8 @@ function makeVcs(c: Config): Promise<VcsProvider> {
 
 export async function buildCtx(opts: CliOverrides): Promise<Ctx> {
   const config = loadConfig(opts);
-  const [vcs] = await Promise.all([
-    makeVcs(config),
+  const [provider] = await Promise.all([
+    makeProvider(config),
     (async () => {
       if (!config.llm.model) {
         config.llm.model = await resolveModel({
@@ -230,7 +236,7 @@ export async function buildCtx(opts: CliOverrides): Promise<Ctx> {
 
   return {
     config,
-    vcs,
+    provider,
     logger: opts.logger ?? new ConsoleLogger(),
   };
 }

@@ -2,7 +2,7 @@
 
 LLM-driven pull-request reviewer. Posts inline findings, reconciles prior bot threads on follow-up pushes, and writes a summary verdict.
 
-- **VCS**: GitHub, GitLab, Bitbucket (pluggable; `mock://` for tests)
+- **VCS**: GitHub, GitLab, Bitbucket (pluggable; `local://` for console-only branch review, `mock://` for tests)
 - **LLM**: any OpenAI-compatible `/v1` endpoint (Anthropic, OpenAI, vLLM, Ollama, OpenRouter, Groq, …)
 - **Runtime**: ships as a self-contained Docker image — consumers don't need Node or pnpm
 
@@ -36,15 +36,17 @@ The workflow builds the reviewer image from source on each run and triggers on e
 
 For Node projects, consume the reviewer as a `devDependency` instead of building the image — no Docker required. Works with npm, yarn, or pnpm.
 
-Add it to the consumer project, pinned to a tag (the git form is the same for every package manager):
+Add it to the consumer project from the npm registry:
 
 ```json
 "devDependencies": {
-  "@reviewer/cli": "github:bilikaz/code-reviewer#v0.1.1"
+  "@bilikaz/code-reviewer": "^0.2.0"
 }
 ```
 
-The package ships prebuilt JavaScript — `dist/` is committed — so the install does no build step (Node refuses to run TypeScript from inside `node_modules`, so compiled output is shipped instead). Then copy [examples/review.yml](examples/review.yml) into `<your-project>/.github/workflows/` and set the same `LLM_URL` / `LLM_KEY` / `LLM_MODEL` secrets as above. If this reviewer repo is **private**, the consumer's install step needs a PAT — see the comments in that file.
+(A git-tag form also works for unpublished revisions — `"@bilikaz/code-reviewer": "github:bilikaz/code-reviewer#<tag>"` — because `dist/` is committed: prebuilt JavaScript, no install-time build. Node refuses to run TypeScript from inside `node_modules`, so compiled output is shipped instead. A private repo consumed this way needs a PAT in the install step.)
+
+Then copy [examples/review.yml](examples/review.yml) into `<your-project>/.github/workflows/` and set the same `LLM_URL` / `LLM_KEY` / `LLM_MODEL` secrets as above.
 
 Run it locally the same way:
 
@@ -106,12 +108,13 @@ All config is env-only and read once at startup. See [.env.example](.env.example
 | Variable | Required | Default | Notes |
 | --- | --- | --- | --- |
 | `LLM_URL` | yes | — | OpenAI-compatible base URL |
-| `LLM_KEY` | yes | — | empty allowed for self-hosted endpoints with no auth |
+| `LLM_KEY` | no | — | omit for self-hosted endpoints with no auth (Authorization header is skipped) |
 | `LLM_MODEL` | no | auto-detect from `/models` | |
 | `GITHUB_TOKEN` / `GITLAB_TOKEN` / `BITBUCKET_TOKEN` | one | — | the one matching the PR URL |
 | `LLM_TEMPERATURE` | no | `0.2` | |
 | `LLM_MAX_OUTPUT_TOKENS` | no | `32768` | |
 | `LLM_HEAL_RETRIES` | no | `2` | retries when LLM output fails schema validation |
+| `LLM_DEBUG` | no | off | `1`/`true` dumps the full request body per LLM call (very chatty) |
 
 ## Development
 
@@ -138,11 +141,17 @@ src/
     reconcile/        re-judge prior bot threads
     review/           LLM review + inline findings
     summarize/        final verdict + summary comment
-  llm/                OpenAI-compatible streaming client, tool loop, schema healing
-  vcs/                github / gitlab / bitbucket / mock providers
-  lib/                git diff parsing
-  logger/             structured JSON logging
+  llm/                client (callLLM + resolveModel, schema healing), transport (HTTP + SSE), tools (Read/Bash)
+  providers/          Provider port + github / gitlab / bitbucket / local / mock adapters
+  lib/                host-level helpers (git diffs, error normalization)
+  logger/             Logger port + console / in-memory sinks
 tests/
   e2e/                vitest end-to-end tests
   fixtures/           mock old/new repo pairs per scenario
+docs/
+  ARCHITECTURE.md     the map: structure, patterns, flows
+  conventions/        portable engineering rules (naming, types placement, …)
+  adr/                dated architecture decision records
 ```
+
+Documentation is layered: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) is this repo's map, [docs/conventions/](docs/conventions/) holds the portable rule set (reusable across projects), and [docs/adr/](docs/adr/) is the decision log that adopts them.

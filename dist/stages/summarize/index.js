@@ -1,11 +1,16 @@
 // summarize — derives the final verdict, posts the summary comment, and
 // sets the PR verdict on the provider. No file writes — verdict signal is
 // state.verdict + (in cli.ts) the process exit code.
-const SUMMARY_FRAGMENTS = [
-    "prior bot finding(s) still unaddressed",
-    "No reviewable source content",
-    "informational finding(s)",
-];
+import { errorMessage } from "../../lib/errors.js";
+import { isOpenBotThread } from "../../providers/types.js";
+// Fragments that identify a bot comment as one of OUR summary comments.
+// buildSummary interpolates these exact constants into the text it posts,
+// and isPriorSummary matches on the same list — construction and detection
+// can't drift apart (ADR-0012). Reword a block by editing its constant.
+const FRAG_UNADDRESSED = "prior bot finding(s) still unaddressed";
+const FRAG_NO_SOURCE = "No reviewable source content";
+const FRAG_INFO = "informational finding(s)";
+const SUMMARY_FRAGMENTS = [FRAG_UNADDRESSED, FRAG_NO_SOURCE, FRAG_INFO];
 function isPriorSummary(c) {
     if (c.by !== "bot" || c.inline)
         return false;
@@ -24,7 +29,7 @@ function deriveVerdict(ctx, state) {
         // Reconcile didn't run. Treat every unresolved bot inline thread as
         // still pending — we don't know whether the head addresses them.
         unaddressed = state.comments
-            .filter((c) => c.by === "bot" && c.inline && !c.resolved && !c.parentId)
+            .filter(isOpenBotThread)
             .map((c) => ({
             thread_id: c.threadId ?? c.id,
             comment_id: c.id,
@@ -42,7 +47,7 @@ function clip(s, cap) {
 function buildSummary(d, charLimit) {
     const blocks = [];
     if (d.verdict === "reject" && d.unaddressed.length > 0) {
-        const lines = [`**${d.unaddressed.length} prior bot finding(s) still unaddressed:**`, ""];
+        const lines = [`**${d.unaddressed.length} ${FRAG_UNADDRESSED}:**`, ""];
         for (const dec of d.unaddressed) {
             const tid = dec.thread_id || dec.comment_id;
             const reason = clip((dec.reason || "").trim(), charLimit);
@@ -51,11 +56,11 @@ function buildSummary(d, charLimit) {
         blocks.push(lines.join("\n"));
     }
     if (d.verdict === "reject" && d.noReviewableSource) {
-        blocks.push("**No reviewable source content** in this PR — all changed files are binary or non-whitelisted (translations, lockfiles, assets, etc.). Bot can't read them; a human reviewer must confirm the change set is intentional before merge.");
+        blocks.push(`**${FRAG_NO_SOURCE}** in this PR — all changed files are binary or non-whitelisted (translations, lockfiles, assets, etc.). Bot can't read them; a human reviewer must confirm the change set is intentional before merge.`);
     }
     if (d.infoFindings.length > 0) {
         const lines = [
-            `**${d.infoFindings.length} informational finding(s)** (nits / suggestions, not blocking — listed here as summary, not tracked as individual threads):`,
+            `**${d.infoFindings.length} ${FRAG_INFO}** (nits / suggestions, not blocking — listed here as summary, not tracked as individual threads):`,
             "",
         ];
         for (const c of d.infoFindings) {
@@ -91,33 +96,26 @@ export async function runSummarize(ctx, state) {
         if (!isPriorSummary(c))
             continue;
         try {
-            await ctx.vcs.deleteComment(c.id, "issue");
+            await ctx.provider.deleteComment(c.id, "issue");
             deleted++;
         }
         catch (e) {
-            log.warn("delete.prior_summary_failed", { id: c.id, error: e.message });
+            log.warn("delete.prior_summary_failed", { id: c.id, error: errorMessage(e) });
         }
     }
     if (deleted)
         log.info("prior_summaries.deleted", { count: deleted });
     const summary = buildSummary(d, ctx.config.review.summaryCommentCharLimit);
     let verdictError = null;
-    if (d.verdict === "approve") {
+    if (d.verdict !== "unknown") {
         try {
-            await ctx.vcs.approve(summary || undefined);
+            const post = d.verdict === "approve" ? ctx.provider.approve(summary || undefined)
+                : ctx.provider.reject(summary || undefined);
+            await post;
         }
         catch (e) {
-            log.error("verdict.failed", { verdict: d.verdict, error: e.message });
-            verdictError = e;
-        }
-    }
-    else if (d.verdict === "reject") {
-        try {
-            await ctx.vcs.reject(summary || undefined);
-        }
-        catch (e) {
-            log.error("verdict.failed", { verdict: d.verdict, error: e.message });
-            verdictError = e;
+            verdictError = errorMessage(e);
+            log.error("verdict.failed", { verdict: d.verdict, error: verdictError });
         }
     }
     // Fatal gates CI: approve verdict is the only non-fatal outcome.
@@ -125,7 +123,7 @@ export async function runSummarize(ctx, state) {
     const fatal = d.verdict !== "approve" || verdictError !== null;
     if (fatal) {
         if (verdictError)
-            log.error("fatal.verdict_failed", { verdict: d.verdict, error: verdictError.message });
+            log.error("fatal.verdict_failed", { verdict: d.verdict, error: verdictError });
         else if (d.verdict === "unknown")
             log.error("fatal.no_review_result");
         else if (d.verdict === "reject")

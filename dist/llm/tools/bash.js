@@ -4,7 +4,7 @@
 // paths or restrict commands — the LLM has whatever the container ships
 // with (git, grep, find, rg if installed, etc.).
 import { spawn } from "node:child_process";
-import { cap } from "./shared.js";
+import { cap } from "./types.js";
 export const bashTool = {
     schema: {
         type: "function",

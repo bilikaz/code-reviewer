@@ -21,11 +21,13 @@
 //   --llm-model <name>  overrides LLM_MODEL (otherwise auto-detected)
 
 import { buildCtx, type CliOverrides, type Ctx } from "./ctx.ts";
+import { errorMessage } from "./lib/errors.ts";
 import { runFetch } from "./stages/fetch/index.ts";
 import { runReconcile } from "./stages/reconcile/index.ts";
 import { runReview } from "./stages/review/index.ts";
 import { runSummarize } from "./stages/summarize/index.ts";
 import type { StageState } from "./stages/types.ts";
+import { isOpenBotThread } from "./providers/types.ts";
 
 // ---- Argv parser --------------------------------------------------------
 
@@ -83,9 +85,7 @@ function buildOverrides(flags: Record<string, string>): CliOverrides {
 // ---- Pipeline orchestration --------------------------------------------
 
 function hasUnresolvedBotThreads(state: StageState): boolean {
-  return state.comments.some(
-    (c) => c.by === "bot" && c.inline && !c.resolved && !c.parentId,
-  );
+  return state.comments.some(isOpenBotThread);
 }
 
 async function runCommand(command: string, ctx: Ctx): Promise<StageState> {
@@ -129,6 +129,6 @@ try {
   const state = await runCommand(command, ctx);
   if (state.verdict?.fatal) process.exit(1);
 } catch (e) {
-  ctx.logger.error("cli.fatal", { error: (e as Error).message });
+  ctx.logger.error("cli.fatal", { error: errorMessage(e) });
   process.exit(1);
 }
