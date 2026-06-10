@@ -10,16 +10,9 @@
 // (LLM_URL / LLM_MODEL) for fast pre-push review while CI uses a heavier one.
 
 import type { Config } from "../ctx.ts";
-import { gitChangedFiles, gitFileDiff, gitPotentialRenames, runGit } from "../lib/git.ts";
-import type {
-  ChangedFile,
-  FileDiffOpts,
-  InlinePost,
-  PotentialRename,
-  PRComment,
-  PRMetadata,
-  VcsProvider,
-} from "./types.ts";
+import { runGit } from "../lib/git.ts";
+import { BaseProvider } from "./base.ts";
+import type { InlinePost, PRComment, PRMetadata, Provider } from "./types.ts";
 
 // ANSI color, on only for an interactive stdout (TTY, no NO_COLOR) so
 // redirected / piped output stays plain. Raw escapes — no dependency.
@@ -45,12 +38,14 @@ function badge(severity?: "info" | "warning" | "blocker"): string {
   }
 }
 
-export class LocalVcsProvider implements VcsProvider {
+export class LocalProvider extends BaseProvider implements Provider {
   readonly name = "local" as const;
 
-  private constructor(private readonly meta: PRMetadata) {}
+  private constructor(private readonly meta: PRMetadata) {
+    super();
+  }
 
-  static async create(config: Config): Promise<LocalVcsProvider> {
+  static async create(config: Config): Promise<LocalProvider> {
     const m = config.pr.url.match(/^local:\/\/(.*)$/);
     const base = (m?.[1] ?? "").trim() || "main";
 
@@ -67,7 +62,7 @@ export class LocalVcsProvider implements VcsProvider {
     const author = (await runGit(["log", "-1", "--format=%an"]).catch(() => "")).trim();
     const title = (await runGit(["log", "-1", "--format=%s"]).catch(() => "")).trim();
 
-    return new LocalVcsProvider({
+    return new LocalProvider({
       title: title || `${headBranch} vs ${base}`,
       description: "",
       author: author || "local",
@@ -82,18 +77,6 @@ export class LocalVcsProvider implements VcsProvider {
 
   async getPRMetadata(): Promise<PRMetadata> {
     return this.meta;
-  }
-
-  async getChangedFiles(meta: PRMetadata): Promise<ChangedFile[]> {
-    return gitChangedFiles({ baseSha: meta.baseSha, headSha: meta.headSha });
-  }
-
-  async getPotentialRenames(meta: PRMetadata): Promise<PotentialRename[]> {
-    return gitPotentialRenames({ baseSha: meta.baseSha, headSha: meta.headSha });
-  }
-
-  async getFileDiff(meta: PRMetadata, path: string, opts: FileDiffOpts): Promise<string> {
-    return gitFileDiff({ baseSha: meta.baseSha, headSha: meta.headSha, path, context: opts.context });
   }
 
   async getPRComments(): Promise<PRComment[]> {
@@ -122,14 +105,5 @@ export class LocalVcsProvider implements VcsProvider {
   }
   async deleteComment(commentId: string, kind: "issue" | "review"): Promise<void> {
     out(dim(`↳ deleted ${kind} comment ${commentId}`));
-  }
-
-  async getRenames(meta: PRMetadata): Promise<{ [oldPath: string]: string }> {
-    const changed = await gitChangedFiles({ baseSha: meta.baseSha, headSha: meta.headSha });
-    const out: { [oldPath: string]: string } = {};
-    for (const f of changed) {
-      if (f.status === "renamed" && f.oldPath) out[f.oldPath] = f.path;
-    }
-    return out;
   }
 }

@@ -3,7 +3,7 @@
 // `context.preloadedFiles`; everything else is additive (set once by its
 // producing stage).
 
-import type { PRComment, PRMetadata } from "../vcs/types.ts";
+import type { PRComment, PRMetadata } from "../providers/types.ts";
 
 // ---- Rendering context — repo dossier the LLM sees ----------------------
 //

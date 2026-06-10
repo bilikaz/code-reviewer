@@ -1,3 +1,10 @@
+// One bot inline finding awaiting action: the root comment of an unresolved
+// inline thread authored by the bot. The pipeline gate (cli.ts), reconcile's
+// candidate selection, and summarize's no-reconcile fallback all share this
+// predicate — they must agree or the verdict drifts (ADR-0011).
+export function isOpenBotThread(c) {
+    return c.by === "bot" && c.inline !== undefined && !c.resolved && !c.parentId;
+}
 // Dispatch helper: returns which provider's `create()` should handle a URL.
 export function detectProvider(url) {
     if (/^mock:\/\//.test(url))

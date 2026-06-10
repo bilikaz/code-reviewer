@@ -1,4 +1,4 @@
-// Bitbucket implementation of VcsProvider. REST API v2 via fetch.
+// Bitbucket implementation of Provider. REST API v2 via fetch.
 //
 // Token needs:
 //   - Cloud (bitbucket.org): App Password or OAuth token with `pullrequest:write`, `repository:read`.
@@ -7,16 +7,31 @@
 // baseUrl defaults to https://api.bitbucket.org/2.0; self-hosted instances pass their own.
 
 import type { Config } from "../ctx.ts";
-import { gitChangedFiles, gitFileDiff, gitPotentialRenames } from "../lib/git.ts";
-import type {
-  ChangedFile,
-  FileDiffOpts,
-  InlinePost,
-  PotentialRename,
-  PRComment,
-  PRMetadata,
-  VcsProvider,
-} from "./types.ts";
+import { BaseProvider } from "./base.ts";
+import type { InlinePost, PRComment, PRMetadata, Provider } from "./types.ts";
+
+type Api = (path: string, init?: RequestInit) => Promise<unknown>;
+
+// Fetch wrapper owned by this provider — deliberately NOT shared with
+// gitlab.ts: the two wrappers look alike today only by coincidence, and
+// the APIs will diverge (pagination, rate limits, auth). See docs/conventions/consolidation.md.
+function makeApi(baseUrl: string, token: string): Api {
+  return async (path, init) => {
+    const resp = await fetch(`${baseUrl}${path}`, {
+      ...init,
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+        ...(init?.headers ?? {}),
+      },
+    });
+    if (!resp.ok) {
+      const text = await resp.text().catch(() => "");
+      throw new Error(`Bitbucket API ${resp.status}: ${text.slice(0, 1024)}`);
+    }
+    return resp.json() as Promise<unknown>;
+  };
+}
 
 interface BitbucketPR {
   id: number;
@@ -41,51 +56,30 @@ interface BitbucketComment {
   resolved?: boolean;
 }
 
-export class BitbucketProvider implements VcsProvider {
+export class BitbucketProvider extends BaseProvider implements Provider {
   readonly name = "bitbucket" as const;
 
   private constructor(
-    private readonly token: string,
-    private readonly baseUrl: string,
+    private readonly api: Api,
     private readonly owner: string,
     private readonly repo: string,
     private readonly number: number,
     private readonly botLogin: string,
-  ) {}
+  ) {
+    super();
+  }
 
   static async create(config: Config): Promise<BitbucketProvider> {
     const { url } = config.pr;
     const { token, baseUrl } = config.bitbucket;
     if (!token) throw new Error("BitbucketProvider: token required");
-    let owner: string, repo: string, num: number;
     const cloud  = url.match(/^https?:\/\/bitbucket\.org\/([^/]+)\/([^/]+)\/pull-requests\/(\d+)/);
     const server = url.match(/^https?:\/\/[^/]+\/projects\/([^/]+)\/repos\/([^/]+)\/pull-requests\/(\d+)/);
     const m = cloud ?? server;
     if (!m) throw new Error(`BitbucketProvider: not a Bitbucket PR URL: ${url}`);
-    owner = m[1]!; repo = m[2]!; num = parseInt(m[3]!, 10);
-    const resolvedBaseUrl = (baseUrl || "https://api.bitbucket.org/2.0").replace(/\/$/, "");
-    const me = await BitbucketProvider.api(resolvedBaseUrl, token, "/user") as { username: string };
-    return new BitbucketProvider(token, resolvedBaseUrl, owner, repo, num, me.username);
-  }
-
-  private static async api(baseUrl: string, token: string, path: string, opts?: RequestInit): Promise<unknown> {
-    const resp = await fetch(`${baseUrl}${path}`, {
-      ...opts,
-      headers: {
-        Authorization: `Bearer ${token}`,
-        "Content-Type": "application/json",
-        ...(opts?.headers ?? {}),
-      },
-    });
-    if (!resp.ok) {
-      const text = await resp.text().catch(() => "");
-      throw new Error(`Bitbucket API ${resp.status}: ${text.slice(0, 1024)}`);
-    }
-    return resp.json() as unknown;
-  }
-
-  private api(path: string, opts?: RequestInit): Promise<unknown> {
-    return BitbucketProvider.api(this.baseUrl, this.token, path, opts);
+    const api = makeApi((baseUrl || "https://api.bitbucket.org/2.0").replace(/\/$/, ""), token);
+    const me = await api("/user") as { username: string };
+    return new BitbucketProvider(api, m[1]!, m[2]!, parseInt(m[3]!, 10), me.username);
   }
 
   private prPath(): string {
@@ -105,18 +99,6 @@ export class BitbucketProvider implements VcsProvider {
       url: pr.links.html.href,
       state: pr.state.name === "MERGED" ? "merged" : (pr.state.name === "OPEN" ? "open" : "closed"),
     };
-  }
-
-  async getChangedFiles(meta: PRMetadata): Promise<ChangedFile[]> {
-    return gitChangedFiles({ baseSha: meta.baseSha, headSha: meta.headSha });
-  }
-
-  async getPotentialRenames(meta: PRMetadata): Promise<PotentialRename[]> {
-    return gitPotentialRenames({ baseSha: meta.baseSha, headSha: meta.headSha });
-  }
-
-  async getFileDiff(meta: PRMetadata, path: string, opts: FileDiffOpts): Promise<string> {
-    return gitFileDiff({ baseSha: meta.baseSha, headSha: meta.headSha, path, context: opts.context });
   }
 
   async getPRComments(): Promise<PRComment[]> {
@@ -179,7 +161,9 @@ export class BitbucketProvider implements VcsProvider {
     await this.api(`${this.prPath()}/comments/${commentId}`, { method: "DELETE" });
   }
 
-  async getRenames(_meta: PRMetadata): Promise<{ [oldPath: string]: string }> {
+  // Bitbucket's diffstat reports renames directly — richer than the base
+  // class's git -M derivation.
+  override async getRenames(_meta: PRMetadata): Promise<{ [oldPath: string]: string }> {
     const diff = await this.api(`${this.prPath()}/diff`) as {
       values?: { status: string; old?: { path: string }; new?: { path: string } }[];
     };

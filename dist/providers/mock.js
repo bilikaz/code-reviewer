@@ -17,7 +17,8 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parse as parseYaml } from "yaml";
-import { gitChangedFiles, gitFileDiff, gitPotentialRenames } from "../lib/git.js";
+import { errorMessage } from "../lib/errors.js";
+import { BaseProvider } from "./base.js";
 function findProjectRoot() {
     let dir = dirname(fileURLToPath(import.meta.url));
     for (let i = 0; i < 10; i++) {
@@ -38,7 +39,9 @@ function loadFixtureConfig(scenarioPath) {
         return parseYaml(readFileSync(p, "utf-8"));
     }
     catch (e) {
-        console.warn(`mock: failed to parse ${p}: ${e.message}`);
+        // console.warn (not the Logger port): the provider is constructed
+        // before a logger exists, and this path is test-only — deliberate exception.
+        console.warn(`mock: failed to parse ${p}: ${errorMessage(e)}`);
         return {};
     }
 }
@@ -96,7 +99,7 @@ const DEFAULT_META = {
     url: "mock://scenario",
     state: "open",
 };
-export class MockVcsProvider {
+export class MockProvider extends BaseProvider {
     name = "mock";
     repo;
     fixture;
@@ -107,17 +110,19 @@ export class MockVcsProvider {
     _deletedComments = [];
     _verdicts = [];
     constructor(repo, fixture) {
+        super();
         this.repo = repo;
+        this.gitCwd = repo?.cwd;
         this.fixture = fixture;
     }
     // Bare provider — no scenario, no git repo. For unit tests that drive a
     // single stage (e.g. summarize) with a hand-built StageState and only need
     // the side-effect recorders.
     static empty(fixture = {}) {
-        return new MockVcsProvider(null, fixture);
+        return new MockProvider(null, fixture);
     }
     static async create(config) {
-        return MockVcsProvider.fromUrl(config.pr.url);
+        return MockProvider.fromUrl(config.pr.url);
     }
     static fromUrl(url) {
         const m = url.match(/^mock:\/\/(.+)$/);
@@ -127,16 +132,16 @@ export class MockVcsProvider {
         const scenarioPath = join(findProjectRoot(), "tests", "fixtures", scenario);
         if (!existsSync(scenarioPath)) {
             console.warn(`mock: scenario ${scenario} not found at ${scenarioPath}; provider has no fixture data`);
-            return new MockVcsProvider(null, {});
+            return new MockProvider(null, {});
         }
         const fixture = loadFixtureConfig(scenarioPath);
         const repo = setupRepo(scenarioPath);
         // Stages read changed files via relative paths; pin cwd to the temp repo
         // so existsSync / readFileSync resolve against the mock head tree.
         process.chdir(repo.cwd);
-        return new MockVcsProvider(repo, fixture);
+        return new MockProvider(repo, fixture);
     }
-    // ---- VcsProvider --------------------------------------------------------
+    // ---- Provider --------------------------------------------------------
     async getPRMetadata() {
         const fromFixture = this.fixture.metadata ?? {};
         return {
@@ -146,20 +151,27 @@ export class MockVcsProvider {
             headSha: this.repo?.headSha ?? fromFixture.headSha ?? "",
         };
     }
+    // Bare (`empty()`) mocks have no git repo — guard, then defer to the
+    // base class's delegation against gitCwd.
     async getChangedFiles(meta) {
         if (!this.repo)
             return [];
-        return gitChangedFiles({ baseSha: meta.baseSha, headSha: meta.headSha, cwd: this.repo.cwd });
+        return super.getChangedFiles(meta);
     }
     async getPotentialRenames(meta) {
         if (!this.repo)
             return [];
-        return gitPotentialRenames({ baseSha: meta.baseSha, headSha: meta.headSha, cwd: this.repo.cwd });
+        return super.getPotentialRenames(meta);
     }
     async getFileDiff(meta, path, opts) {
         if (!this.repo)
             return "";
-        return gitFileDiff({ baseSha: meta.baseSha, headSha: meta.headSha, path, context: opts.context, cwd: this.repo.cwd });
+        return super.getFileDiff(meta, path, opts);
+    }
+    async getRenames(meta) {
+        if (!this.repo)
+            return {};
+        return super.getRenames(meta);
     }
     async getPRComments() {
         return (this.fixture.comments ?? []).map((c) => ({ ...c }));
@@ -181,19 +193,6 @@ export class MockVcsProvider {
     }
     async deleteComment(commentId, kind) {
         this._deletedComments.push({ commentId, kind });
-    }
-    // Renames come from git's -M detection in getChangedFiles; mock keeps this
-    // method coherent with the others (callers use getChangedFiles directly).
-    async getRenames(meta) {
-        if (!this.repo)
-            return {};
-        const changed = await gitChangedFiles({ baseSha: meta.baseSha, headSha: meta.headSha, cwd: this.repo.cwd });
-        const out = {};
-        for (const f of changed) {
-            if (f.status === "renamed" && f.oldPath)
-                out[f.oldPath] = f.path;
-        }
-        return out;
     }
     // ---- Accessors for test assertions -------------------------------------
     get cwd() { return this.repo?.cwd ?? null; }

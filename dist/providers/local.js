@@ -8,7 +8,8 @@
 // comments / verdict a real provider would post, just printed (like git's
 // own progress output). Pairs well with running a small local model
 // (LLM_URL / LLM_MODEL) for fast pre-push review while CI uses a heavier one.
-import { gitChangedFiles, gitFileDiff, gitPotentialRenames, runGit } from "../lib/git.js";
+import { runGit } from "../lib/git.js";
+import { BaseProvider } from "./base.js";
 // ANSI color, on only for an interactive stdout (TTY, no NO_COLOR) so
 // redirected / piped output stays plain. Raw escapes — no dependency.
 const COLOR = Boolean(process.stdout.isTTY) && !process.env.NO_COLOR;
@@ -30,10 +31,11 @@ function badge(severity) {
         default: return cyan("info");
     }
 }
-export class LocalVcsProvider {
+export class LocalProvider extends BaseProvider {
     meta;
     name = "local";
     constructor(meta) {
+        super();
         this.meta = meta;
     }
     static async create(config) {
@@ -50,7 +52,7 @@ export class LocalVcsProvider {
         const headBranch = (await runGit(["rev-parse", "--abbrev-ref", "HEAD"])).trim();
         const author = (await runGit(["log", "-1", "--format=%an"]).catch(() => "")).trim();
         const title = (await runGit(["log", "-1", "--format=%s"]).catch(() => "")).trim();
-        return new LocalVcsProvider({
+        return new LocalProvider({
             title: title || `${headBranch} vs ${base}`,
             description: "",
             author: author || "local",
@@ -64,15 +66,6 @@ export class LocalVcsProvider {
     }
     async getPRMetadata() {
         return this.meta;
-    }
-    async getChangedFiles(meta) {
-        return gitChangedFiles({ baseSha: meta.baseSha, headSha: meta.headSha });
-    }
-    async getPotentialRenames(meta) {
-        return gitPotentialRenames({ baseSha: meta.baseSha, headSha: meta.headSha });
-    }
-    async getFileDiff(meta, path, opts) {
-        return gitFileDiff({ baseSha: meta.baseSha, headSha: meta.headSha, path, context: opts.context });
     }
     async getPRComments() {
         return [];
@@ -101,14 +94,5 @@ export class LocalVcsProvider {
     }
     async deleteComment(commentId, kind) {
         out(dim(`↳ deleted ${kind} comment ${commentId}`));
-    }
-    async getRenames(meta) {
-        const changed = await gitChangedFiles({ baseSha: meta.baseSha, headSha: meta.headSha });
-        const out = {};
-        for (const f of changed) {
-            if (f.status === "renamed" && f.oldPath)
-                out[f.oldPath] = f.path;
-        }
-        return out;
     }
 }

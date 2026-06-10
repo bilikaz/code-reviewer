@@ -10,7 +10,7 @@ import { buildTestCtx } from "../helpers.ts";
 
 describe("reconcile", () => {
   it("auto_address_deleted: thread on a deleted file is auto-resolved (no LLM)", async () => {
-    const { ctx, vcs } = await buildTestCtx("reconcile/auto_address_deleted");
+    const { ctx, provider } = await buildTestCtx("reconcile/auto_address_deleted");
     let state = await runFetch(ctx);
     state = await runReconcile(ctx, state);
 
@@ -20,7 +20,7 @@ describe("reconcile", () => {
     expect(decisions[0]!.addressed).toBe(true);
     expect(decisions[0]!.reason).toMatch(/no longer exists/i);
 
-    expect(vcs.resolvedThreads.some((r) => r.threadId === "t100")).toBe(true);
+    expect(provider.resolvedThreads.some((r) => r.threadId === "t100")).toBe(true);
 
     // No LLM call — reconcile's stage metric should be skipped.
     const m = state.metrics.find((x) => x.stage === "reconcile");
@@ -28,17 +28,17 @@ describe("reconcile", () => {
   });
 
   it("renamed_file: rename banner posted on new path + old thread resolved (no LLM)", async () => {
-    const { ctx, vcs } = await buildTestCtx("reconcile/renamed_file");
+    const { ctx, provider } = await buildTestCtx("reconcile/renamed_file");
     let state = await runFetch(ctx);
     state = await runReconcile(ctx, state);
 
     // Notice posted on the new path at line 1.
-    const notice = vcs.postedInline.find((p) => p.c.path === "src/authentication.ts" && p.c.line === 1);
+    const notice = provider.postedInline.find((p) => p.c.path === "src/authentication.ts" && p.c.line === 1);
     expect(notice).toBeDefined();
     expect(notice!.c.body).toMatch(/File renamed:.*src\/auth\.ts.*src\/authentication\.ts/s);
 
     // Original thread resolved.
-    expect(vcs.resolvedThreads.some((r) => r.threadId === "t200")).toBe(true);
+    expect(provider.resolvedThreads.some((r) => r.threadId === "t200")).toBe(true);
 
     // No LLM judgment needed for the renamed thread.
     const m = state.metrics.find((x) => x.stage === "reconcile");
@@ -46,29 +46,29 @@ describe("reconcile", () => {
   });
 
   it("fix_applied: LLM marks thread addressed when the diff implements the fix", async () => {
-    const { ctx, vcs } = await buildTestCtx("reconcile/fix_applied");
+    const { ctx, provider } = await buildTestCtx("reconcile/fix_applied");
     let state = await runFetch(ctx);
     state = await runReconcile(ctx, state);
 
     const decision = (state.decisions ?? []).find((d) => d.comment_id === "500");
     expect(decision).toBeDefined();
     expect(decision!.addressed).toBe(true);
-    expect(vcs.resolvedThreads.some((r) => r.threadId === "t500")).toBe(true);
+    expect(provider.resolvedThreads.some((r) => r.threadId === "t500")).toBe(true);
   });
 
   it("user_valid_reply: LLM accepts a verifiable dev explanation as addressed", async () => {
-    const { ctx, vcs } = await buildTestCtx("reconcile/user_valid_reply");
+    const { ctx, provider } = await buildTestCtx("reconcile/user_valid_reply");
     let state = await runFetch(ctx);
     state = await runReconcile(ctx, state);
 
     const decision = (state.decisions ?? []).find((d) => d.comment_id === "300");
     expect(decision).toBeDefined();
     expect(decision!.addressed).toBe(true);
-    expect(vcs.resolvedThreads.some((r) => r.threadId === "t300")).toBe(true);
+    expect(provider.resolvedThreads.some((r) => r.threadId === "t300")).toBe(true);
   });
 
   it("user_invalid_reply: LLM rejects a bogus dev rebuttal — thread stays unaddressed", async () => {
-    const { ctx, vcs } = await buildTestCtx("reconcile/user_invalid_reply");
+    const { ctx, provider } = await buildTestCtx("reconcile/user_invalid_reply");
     let state = await runFetch(ctx);
     state = await runReconcile(ctx, state);
 
@@ -76,6 +76,6 @@ describe("reconcile", () => {
     expect(decision).toBeDefined();
     expect(decision!.addressed).toBe(false);
     // Unaddressed → thread NOT resolved.
-    expect(vcs.resolvedThreads.some((r) => r.threadId === "t400")).toBe(false);
+    expect(provider.resolvedThreads.some((r) => r.threadId === "t400")).toBe(false);
   });
 });

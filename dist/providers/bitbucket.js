@@ -1,22 +1,41 @@
-// Bitbucket implementation of VcsProvider. REST API v2 via fetch.
+// Bitbucket implementation of Provider. REST API v2 via fetch.
 //
 // Token needs:
 //   - Cloud (bitbucket.org): App Password or OAuth token with `pullrequest:write`, `repository:read`.
 //   - Server (self-hosted): PAT with `REPO_READ` + `PULL_REQUEST_WRITE`.
 //
 // baseUrl defaults to https://api.bitbucket.org/2.0; self-hosted instances pass their own.
-import { gitChangedFiles, gitFileDiff, gitPotentialRenames } from "../lib/git.js";
-export class BitbucketProvider {
-    token;
-    baseUrl;
+import { BaseProvider } from "./base.js";
+// Fetch wrapper owned by this provider — deliberately NOT shared with
+// gitlab.ts: the two wrappers look alike today only by coincidence, and
+// the APIs will diverge (pagination, rate limits, auth). See docs/conventions/consolidation.md.
+function makeApi(baseUrl, token) {
+    return async (path, init) => {
+        const resp = await fetch(`${baseUrl}${path}`, {
+            ...init,
+            headers: {
+                Authorization: `Bearer ${token}`,
+                "Content-Type": "application/json",
+                ...(init?.headers ?? {}),
+            },
+        });
+        if (!resp.ok) {
+            const text = await resp.text().catch(() => "");
+            throw new Error(`Bitbucket API ${resp.status}: ${text.slice(0, 1024)}`);
+        }
+        return resp.json();
+    };
+}
+export class BitbucketProvider extends BaseProvider {
+    api;
     owner;
     repo;
     number;
     botLogin;
     name = "bitbucket";
-    constructor(token, baseUrl, owner, repo, number, botLogin) {
-        this.token = token;
-        this.baseUrl = baseUrl;
+    constructor(api, owner, repo, number, botLogin) {
+        super();
+        this.api = api;
         this.owner = owner;
         this.repo = repo;
         this.number = number;
@@ -27,36 +46,14 @@ export class BitbucketProvider {
         const { token, baseUrl } = config.bitbucket;
         if (!token)
             throw new Error("BitbucketProvider: token required");
-        let owner, repo, num;
         const cloud = url.match(/^https?:\/\/bitbucket\.org\/([^/]+)\/([^/]+)\/pull-requests\/(\d+)/);
         const server = url.match(/^https?:\/\/[^/]+\/projects\/([^/]+)\/repos\/([^/]+)\/pull-requests\/(\d+)/);
         const m = cloud ?? server;
         if (!m)
             throw new Error(`BitbucketProvider: not a Bitbucket PR URL: ${url}`);
-        owner = m[1];
-        repo = m[2];
-        num = parseInt(m[3], 10);
-        const resolvedBaseUrl = (baseUrl || "https://api.bitbucket.org/2.0").replace(/\/$/, "");
-        const me = await BitbucketProvider.api(resolvedBaseUrl, token, "/user");
-        return new BitbucketProvider(token, resolvedBaseUrl, owner, repo, num, me.username);
-    }
-    static async api(baseUrl, token, path, opts) {
-        const resp = await fetch(`${baseUrl}${path}`, {
-            ...opts,
-            headers: {
-                Authorization: `Bearer ${token}`,
-                "Content-Type": "application/json",
-                ...(opts?.headers ?? {}),
-            },
-        });
-        if (!resp.ok) {
-            const text = await resp.text().catch(() => "");
-            throw new Error(`Bitbucket API ${resp.status}: ${text.slice(0, 1024)}`);
-        }
-        return resp.json();
-    }
-    api(path, opts) {
-        return BitbucketProvider.api(this.baseUrl, this.token, path, opts);
+        const api = makeApi((baseUrl || "https://api.bitbucket.org/2.0").replace(/\/$/, ""), token);
+        const me = await api("/user");
+        return new BitbucketProvider(api, m[1], m[2], parseInt(m[3], 10), me.username);
     }
     prPath() {
         return `/repositories/${this.owner}/${this.repo}/pullrequests/${this.number}`;
@@ -74,15 +71,6 @@ export class BitbucketProvider {
             url: pr.links.html.href,
             state: pr.state.name === "MERGED" ? "merged" : (pr.state.name === "OPEN" ? "open" : "closed"),
         };
-    }
-    async getChangedFiles(meta) {
-        return gitChangedFiles({ baseSha: meta.baseSha, headSha: meta.headSha });
-    }
-    async getPotentialRenames(meta) {
-        return gitPotentialRenames({ baseSha: meta.baseSha, headSha: meta.headSha });
-    }
-    async getFileDiff(meta, path, opts) {
-        return gitFileDiff({ baseSha: meta.baseSha, headSha: meta.headSha, path, context: opts.context });
     }
     async getPRComments() {
         const out = [];
@@ -139,6 +127,8 @@ export class BitbucketProvider {
     async deleteComment(commentId, _kind) {
         await this.api(`${this.prPath()}/comments/${commentId}`, { method: "DELETE" });
     }
+    // Bitbucket's diffstat reports renames directly — richer than the base
+    // class's git -M derivation.
     async getRenames(_meta) {
         const diff = await this.api(`${this.prPath()}/diff`);
         const out = {};

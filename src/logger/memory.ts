@@ -1,7 +1,7 @@
 // In-memory sink. Records every event for test assertions. `stream` chunks
 // are concatenated into a single field per scope.
 
-import type { Logger, LogEntry } from "./index.ts";
+import { joinScope, type Logger, type LogEntry } from "./types.ts";
 
 export class MemoryLogger implements Logger {
   readonly entries: LogEntry[];
@@ -43,7 +43,6 @@ export class MemoryLogger implements Logger {
   }
 
   child(scope: string): Logger {
-    const next = this.scope ? `${this.scope}.${scope}` : scope;
-    return new MemoryLogger(next, this.entries, this._streamRef);
+    return new MemoryLogger(joinScope(this.scope, scope), this.entries, this._streamRef);
   }
 }

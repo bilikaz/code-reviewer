@@ -21,8 +21,9 @@ import { extname } from "node:path";
 
 import type { Ctx } from "../../ctx.ts";
 import { firstHunkNewLine, headLinesCovered, runGit } from "../../lib/git.ts";
+import type { Logger } from "../../logger/index.ts";
 import { loadStandards, renderStandards } from "./standards.ts";
-import type { ChangedFile, PRMetadata } from "../../vcs/types.ts";
+import type { ChangedFile, PRMetadata } from "../../providers/types.ts";
 import {
   emptyRenderingContext,
   type BinaryEntry,
@@ -39,10 +40,10 @@ export async function runFetch(ctx: Ctx): Promise<StageState> {
   log.info("start", { pr: ctx.config.pr.url });
 
   const [meta, comments] = await Promise.all([
-    ctx.vcs.getPRMetadata(),
-    ctx.vcs.getPRComments(),
+    ctx.provider.getPRMetadata(),
+    ctx.provider.getPRComments(),
   ]);
-  const changed = await ctx.vcs.getChangedFiles(meta);
+  const changed = await ctx.provider.getChangedFiles(meta);
   const rendering = await assembleRendering(ctx, meta, changed, log);
 
   const standards = loadStandards(ctx.config.review.standardsRoot, log);
@@ -93,7 +94,7 @@ async function assembleRendering(
   ctx: Ctx,
   meta: PRMetadata,
   changed: ChangedFile[],
-  log: ReturnType<Ctx["logger"]["child"]>,
+  log: Logger,
 ): Promise<RenderingContext> {
   const cfg = ctx.config.review.diffFilter;
   const exts = new Set(cfg.includeExtensions.map((e) => e.toLowerCase()));
@@ -120,7 +121,7 @@ async function assembleRendering(
 
     // Deletion: head-side file is gone. Full deletion patch via -U10000.
     if (f.status === "deleted") {
-      const content = await ctx.vcs.getFileDiff(meta, f.path, { context: 10000 });
+      const content = await ctx.provider.getFileDiff(meta, f.path, { context: 10000 });
       pushDiff(out.diffs, f.path, "full_file", content);
       continue;
     }
@@ -133,26 +134,26 @@ async function assembleRendering(
 
     // Small file → inline full file.
     if (headLineCount <= cfg.fullFileThresholdLines) {
-      const content = await ctx.vcs.getFileDiff(meta, f.path, { context: 10000 });
+      const content = await ctx.provider.getFileDiff(meta, f.path, { context: 10000 });
       pushDiff(out.diffs, f.path, "full_file", content);
       continue;
     }
 
     // Big file. Probe with narrow context to find first change + coverage.
-    const narrow = await ctx.vcs.getFileDiff(meta, f.path, { context: cfg.narrowContextLines });
+    const narrow = await ctx.provider.getFileDiff(meta, f.path, { context: cfg.narrowContextLines });
     const firstChange = firstHunkNewLine(narrow);
     const coverage = headLineCount > 0 ? headLinesCovered(narrow) / headLineCount : 0;
 
     if (coverage >= cfg.fullFileCoverageThreshold) {
       // High coverage → promote to full file display.
-      const content = await ctx.vcs.getFileDiff(meta, f.path, { context: 10000 });
+      const content = await ctx.provider.getFileDiff(meta, f.path, { context: 10000 });
       pushDiff(out.diffs, f.path, "full_file", content);
       continue;
     }
 
     if (firstChange !== null && firstChange <= cfg.bigFileHeaderLines) {
       // Earliest change near top — widening context pulls in lines 1..change.
-      const content = await ctx.vcs.getFileDiff(meta, f.path, { context: cfg.bigFileHeaderLines });
+      const content = await ctx.provider.getFileDiff(meta, f.path, { context: cfg.bigFileHeaderLines });
       pushDiff(out.diffs, f.path, "big_file", content);
       continue;
     }

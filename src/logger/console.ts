@@ -1,7 +1,7 @@
 // Default sink: pretty indented output to stderr. Each event on its own
 // line, structured `data` rendered as indented JSON below it.
 
-import type { Logger, LogLevel } from "./index.ts";
+import { joinScope, type Logger, type LogLevel } from "./types.ts";
 
 const LEVEL_TAG: Record<LogLevel, string> = {
   debug: "DBG",
@@ -42,6 +42,6 @@ export class ConsoleLogger implements Logger {
     process.stderr.write(chunk);
   }
   child(scope: string): Logger {
-    return new ConsoleLogger(this.scope ? `${this.scope}.${scope}` : scope);
+    return new ConsoleLogger(joinScope(this.scope, scope));
   }
 }

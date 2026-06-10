@@ -1,3 +1,10 @@
+import type { ChangedFile, PotentialRename } from "../lib/git.ts";
+
+// Git-derived wire shapes are defined where they're produced (lib/git.ts)
+// and re-exported here so consumers keep importing them from the port
+// (ADR-0009).
+export type { ChangedFile, PotentialRename } from "../lib/git.ts";
+
 export type ProviderKind = "github" | "gitlab" | "bitbucket" | "mock" | "local";
 
 export interface PRMetadata {
@@ -36,31 +43,15 @@ export interface InlinePost {
   severity?: "info" | "warning" | "blocker";
 }
 
-export interface ChangedFile {
-  path: string;
-  status: "added" | "modified" | "deleted" | "renamed";
-  oldPath?: string;
-}
-
 export interface FileDiffOpts {
   context: number;
-}
-
-// Pairs git flagged as renames at a relaxed similarity threshold (30%–49%)
-// — below the confident bar but worth surfacing so the operator can spot
-// "this should have been a rename" cases (typically small files where git's
-// score is penalized by per-file overhead).
-export interface PotentialRename {
-  oldPath: string;
-  newPath: string;
-  similarityPct: number;
 }
 
 // Each provider stores its PR identity (owner/repo/number) and token at
 // construction time via a `static create(config)` async factory. Methods
 // don't take a ref parameter — the provider serves exactly one PR for its
 // lifetime.
-export interface VcsProvider {
+export interface Provider {
   readonly name: ProviderKind;
 
   getPRMetadata(): Promise<PRMetadata>;
@@ -90,6 +81,16 @@ export interface VcsProvider {
   deleteComment(commentId: string, kind: "issue" | "review"): Promise<void>;
 
   getRenames(meta: PRMetadata): Promise<{ [oldPath: string]: string }>;
+}
+
+// One bot inline finding awaiting action: the root comment of an unresolved
+// inline thread authored by the bot. The pipeline gate (cli.ts), reconcile's
+// candidate selection, and summarize's no-reconcile fallback all share this
+// predicate — they must agree or the verdict drifts (ADR-0011).
+export function isOpenBotThread(
+  c: PRComment,
+): c is PRComment & { inline: NonNullable<PRComment["inline"]> } {
+  return c.by === "bot" && c.inline !== undefined && !c.resolved && !c.parentId;
 }
 
 // Dispatch helper: returns which provider's `create()` should handle a URL.

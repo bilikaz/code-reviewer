@@ -5,30 +5,18 @@
 //   2. Auto-address — threads whose target file no longer exists in the
 //      working tree are marked addressed=true deterministically (no LLM).
 //   3. verify() — LLM judges the remaining threads.
-import { existsSync, readFileSync } from "node:fs";
-import { resolve } from "node:path";
-import { callLLM } from "../../llm/call.js";
-import { hasRendering, renderRenderingContext } from "../shared.js";
-const HERE = import.meta.dirname;
-const PROMPT = readFileSync(resolve(HERE, "prompt.md"), "utf-8");
-const SCHEMA_TEXT = readFileSync(resolve(HERE, "schema.json"), "utf-8");
-const SCHEMA = JSON.parse(SCHEMA_TEXT);
+import { existsSync } from "node:fs";
+import { errorMessage } from "../../lib/errors.js";
+import { callLLM } from "../../llm/client.js";
+import { isOpenBotThread } from "../../providers/types.js";
+import { baseSystemSections, baseUserSections, llmStageMetric, loadPromptAssets } from "../shared.js";
+const ASSETS = loadPromptAssets(import.meta.dirname);
 const RENAME_BANNER_PREFIX = "⚠ **File renamed:** ";
-const SLOT = {
-    outputSchema: "output_schema",
-    projectContext: "project_context",
-    prMetadata: "pr_metadata",
-    prDiff: "pr_diff",
-    prComments: "pr_comments",
-    renderingContext: "rendering_context",
-};
 function splitThreads(comments) {
     const auto = [];
     const rest = [];
     for (const c of comments) {
-        if (c.by !== "bot" || c.resolved || c.parentId)
-            continue;
-        if (!c.inline)
+        if (!isOpenBotThread(c))
             continue;
         if (c.inline.path && !existsSync(c.inline.path))
             auto.push(c);
@@ -77,14 +65,14 @@ async function handleRenames(ctx, comments, renames) {
                     `This was a prior bot finding on the old path; please verify ` +
                     `whether it still applies in the new location.\n\n` +
                     `**Original finding:**\n\n${c.body || ""}`;
-                await ctx.vcs.postInlineComment({ path: newPath, line: 1, body: notice });
+                await ctx.provider.postInlineComment({ path: newPath, line: 1, body: notice });
             }
-            await ctx.vcs.resolveThread(c.threadId ?? c.id);
+            await ctx.provider.resolveThread(c.threadId ?? c.id);
             count++;
             log.info(alreadyPosted ? "re_resolved" : "relocated", { thread: c.id, oldPath, newPath });
         }
         catch (e) {
-            log.error("relocate.failed", { thread: c.id, oldPath, newPath, error: e.message });
+            log.error("relocate.failed", { thread: c.id, oldPath, newPath, error: errorMessage(e) });
         }
     }
     return count;
@@ -102,11 +90,11 @@ async function applyResolutions(ctx, byCommentId, decisions) {
             continue;
         }
         try {
-            await ctx.vcs.resolveThread(comment.threadId);
+            await ctx.provider.resolveThread(comment.threadId);
             resolved++;
         }
         catch (e) {
-            log.error("resolve.failed", { thread: comment.threadId, error: e.message });
+            log.error("resolve.failed", { thread: comment.threadId, error: errorMessage(e) });
             failed++;
         }
     }
@@ -118,11 +106,11 @@ export async function runReconcile(ctx, state) {
     const t0 = Date.now();
     const log = ctx.logger.child("reconcile");
     let comments = state.comments;
-    const renames = await ctx.vcs.getRenames(state.meta);
+    const renames = await ctx.provider.getRenames(state.meta);
     if (Object.keys(renames).length > 0) {
         const relocated = await handleRenames(ctx, comments, renames);
         if (relocated > 0)
-            comments = await ctx.vcs.getPRComments();
+            comments = await ctx.provider.getPRComments();
     }
     const { auto, rest } = splitThreads(comments);
     const byCommentId = new Map(comments.map((c) => [c.id, c]));
@@ -130,7 +118,7 @@ export async function runReconcile(ctx, state) {
     // paths look like a sub-confident rename — they'd otherwise be silently
     // marked addressed when in fact a moved file may still carry the concern.
     if (auto.length > 0) {
-        const potential = await ctx.vcs.getPotentialRenames(state.meta);
+        const potential = await ctx.provider.getPotentialRenames(state.meta);
         if (potential.length > 0) {
             const potByOld = new Map(potential.map((p) => [p.oldPath, p]));
             for (const c of auto) {
@@ -169,27 +157,14 @@ export async function runReconcile(ctx, state) {
     const threadIds = new Set(rest.map((c) => c.id));
     const replies = gatherReplies(comments, threadIds);
     log.info("llm_judging", { threads: rest.length, reply_context: replies.length });
-    const systemSections = [
-        { tag: "", content: PROMPT },
-        { tag: SLOT.outputSchema, content: SCHEMA_TEXT },
-    ];
-    if (state.context.projectContext.trim()) {
-        systemSections.push({ tag: SLOT.projectContext, content: state.context.projectContext });
-    }
-    if (hasRendering(state.context.rendering)) {
-        systemSections.push({ tag: SLOT.renderingContext, content: renderRenderingContext(state.context.rendering) });
-    }
-    const userSections = [
-        { tag: SLOT.prMetadata, content: JSON.stringify(state.meta, null, 2) },
-        { tag: SLOT.prDiff, content: state.diff },
-        { tag: SLOT.prComments, content: JSON.stringify([...rest, ...replies], null, 2) },
-    ];
+    const systemSections = baseSystemSections(ASSETS, state);
+    const userSections = baseUserSections(state, [...rest, ...replies]);
     const result = await callLLM({
         ctx,
         stage: "reconcile",
         systemSections,
         userSections,
-        schema: SCHEMA,
+        schema: ASSETS.schema,
     });
     const llmDecisions = result.validated.decisions ?? [];
     await applyResolutions(ctx, byCommentId, llmDecisions);
@@ -197,12 +172,6 @@ export async function runReconcile(ctx, state) {
         ...state,
         comments,
         decisions: [...autoDecisions, ...llmDecisions],
-        metrics: [...state.metrics, {
-                stage: "reconcile",
-                durationMs: Date.now() - t0,
-                tokens: { input: result.usage.promptTokens, output: result.usage.completionTokens, total: result.usage.totalTokens },
-                healAttempts: result.healAttempts,
-                toolCalls: result.toolCalls,
-            }],
+        metrics: [...state.metrics, llmStageMetric("reconcile", t0, result)],
     };
 }

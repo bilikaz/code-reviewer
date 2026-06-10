@@ -21,7 +21,7 @@
 
 import { existsSync, readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
-import YAML from "yaml";
+import { parse as parseYaml } from "yaml";
 
 import type { Logger } from "../../logger/index.ts";
 
@@ -52,7 +52,7 @@ export function loadStandards(standardsRoot: string, log: Logger): LoadedStandar
     log.warn("standards.index_missing", { path: indexPath });
     return null;
   }
-  const index = YAML.parse(readFileSync(indexPath, "utf-8")) as { topics?: IndexEntry[] } | null;
+  const index = parseYaml(readFileSync(indexPath, "utf-8")) as { topics?: IndexEntry[] } | null;
   if (!index?.topics) return { topics: [] };
 
   const topics: LoadedTopic[] = [];
@@ -62,7 +62,7 @@ export function loadStandards(standardsRoot: string, log: Logger): LoadedStandar
       log.warn("standards.topic_missing", { file: entry.file });
       continue;
     }
-    const parsed = YAML.parse(readFileSync(filePath, "utf-8")) as { rules?: Rule[] } | null;
+    const parsed = parseYaml(readFileSync(filePath, "utf-8")) as { rules?: Rule[] } | null;
     topics.push({
       description: entry.description ?? entry.file,
       rules: parsed?.rules ?? [],

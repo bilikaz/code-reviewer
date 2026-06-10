@@ -6,49 +6,20 @@
 // so the prompt asks for a verbatim snippet (plus optional context_before/
 // after to disambiguate) and we do the line-number work here.
 import { existsSync, readFileSync } from "node:fs";
-import { resolve } from "node:path";
-import { callLLM } from "../../llm/call.js";
-import { hasRendering, renderRenderingContext } from "../shared.js";
-const HERE = import.meta.dirname;
-const PROMPT = readFileSync(resolve(HERE, "prompt.md"), "utf-8");
-const SCHEMA_TEXT = readFileSync(resolve(HERE, "schema.json"), "utf-8");
-const SCHEMA = JSON.parse(SCHEMA_TEXT);
-const SLOT = {
-    outputSchema: "output_schema",
-    projectContext: "project_context",
-    prMetadata: "pr_metadata",
-    prDiff: "pr_diff",
-    prComments: "pr_comments",
-    threadDecisions: "thread_decisions",
-    reviewChecklist: "review_checklist",
-    renderingContext: "rendering_context",
-};
+import { errorMessage } from "../../lib/errors.js";
+import { callLLM } from "../../llm/client.js";
+import { baseSystemSections, baseUserSections, llmStageMetric, loadPromptAssets, SLOT } from "../shared.js";
+const ASSETS = loadPromptAssets(import.meta.dirname);
 export async function runReview(ctx, state) {
     const t0 = Date.now();
     const log = ctx.logger.child("review");
-    const systemSections = [
-        { tag: "", content: PROMPT },
-        { tag: SLOT.outputSchema, content: SCHEMA_TEXT },
-    ];
-    if (state.context.projectContext.trim()) {
-        systemSections.push({ tag: SLOT.projectContext, content: state.context.projectContext });
-    }
-    if (state.context.reviewChecklist) {
-        systemSections.push({ tag: SLOT.reviewChecklist, content: state.context.reviewChecklist });
-    }
-    if (hasRendering(state.context.rendering)) {
-        systemSections.push({ tag: SLOT.renderingContext, content: renderRenderingContext(state.context.rendering) });
-    }
-    const userSections = [
-        { tag: SLOT.prMetadata, content: JSON.stringify(state.meta, null, 2) },
-        { tag: SLOT.prDiff, content: state.diff },
-        { tag: SLOT.prComments, content: JSON.stringify(state.comments, null, 2) },
-    ];
+    const systemSections = baseSystemSections(ASSETS, state, { includeChecklist: true });
+    const userSections = baseUserSections(state, state.comments);
     if (state.decisions?.length) {
         userSections.push({ tag: SLOT.threadDecisions, content: JSON.stringify(state.decisions, null, 2) });
     }
     const result = await callLLM({
-        ctx, stage: "review", systemSections, userSections, schema: SCHEMA,
+        ctx, stage: "review", systemSections, userSections, schema: ASSETS.schema,
     });
     const findings = result.validated.comments;
     await postFindings(ctx, findings);
@@ -56,13 +27,7 @@ export async function runReview(ctx, state) {
     return {
         ...state,
         findings,
-        metrics: [...state.metrics, {
-                stage: "review",
-                durationMs: Date.now() - t0,
-                tokens: { input: result.usage.promptTokens, output: result.usage.completionTokens, total: result.usage.totalTokens },
-                healAttempts: result.healAttempts,
-                toolCalls: result.toolCalls,
-            }],
+        metrics: [...state.metrics, llmStageMetric("review", t0, result)],
     };
 }
 async function postFindings(ctx, findings) {
@@ -75,7 +40,7 @@ async function postFindings(ctx, findings) {
             await postFinding(ctx, log, c);
         }
         catch (e) {
-            log.error("post.failed", { path: c.path, error: e.message });
+            log.error("post.failed", { path: c.path, error: errorMessage(e) });
         }
     }
 }
@@ -86,7 +51,7 @@ async function postFinding(ctx, log, c) {
     if (!c.path || !existsSync(c.path)) {
         const body = wrapWithBanner(c.snippet, c.body, "anchor not located");
         log.warn("anchor.unresolved", { path: c.path, fallback: "top_level" });
-        await ctx.vcs.postSummaryComment(body);
+        await ctx.provider.postSummaryComment(body);
         return;
     }
     let line = findUniqueMatch(c.path, c);
@@ -96,7 +61,7 @@ async function postFinding(ctx, log, c) {
         log.warn("anchor.unresolved", { path: c.path, fallback: "line_1" });
         body = wrapWithBanner(c.snippet, c.body, "snippet not uniquely matched on head");
     }
-    await ctx.vcs.postInlineComment({ path: c.path, line, body, severity: c.severity });
+    await ctx.provider.postInlineComment({ path: c.path, line, body, severity: c.severity });
 }
 function normalizeLines(text) {
     // Strip leading whitespace per line (prompt instructs the LLM to do the

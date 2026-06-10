@@ -21,7 +21,8 @@ import { fileURLToPath } from "node:url";
 import { parse as parseYaml } from "yaml";
 
 import type { Config } from "../ctx.ts";
-import { gitChangedFiles, gitFileDiff, gitPotentialRenames } from "../lib/git.ts";
+import { errorMessage } from "../lib/errors.ts";
+import { BaseProvider } from "./base.ts";
 import type {
   ChangedFile,
   FileDiffOpts,
@@ -29,7 +30,7 @@ import type {
   PotentialRename,
   PRComment,
   PRMetadata,
-  VcsProvider,
+  Provider,
 } from "./types.ts";
 
 // ---- Fixture loading -----------------------------------------------------
@@ -58,7 +59,9 @@ function loadFixtureConfig(scenarioPath: string): FixtureConfig {
   try {
     return parseYaml(readFileSync(p, "utf-8")) as FixtureConfig;
   } catch (e) {
-    console.warn(`mock: failed to parse ${p}: ${(e as Error).message}`);
+    // console.warn (not the Logger port): the provider is constructed
+    // before a logger exists, and this path is test-only — deliberate exception.
+    console.warn(`mock: failed to parse ${p}: ${errorMessage(e)}`);
     return {};
   }
 }
@@ -128,7 +131,7 @@ const DEFAULT_META: PRMetadata = {
   state: "open",
 };
 
-export class MockVcsProvider implements VcsProvider {
+export class MockProvider extends BaseProvider implements Provider {
   readonly name: "mock" = "mock";
 
   private readonly repo: RepoSetup | null;
@@ -142,39 +145,41 @@ export class MockVcsProvider implements VcsProvider {
   private _verdicts:         Array<{ verdict: MockAction; summary?: string }> = [];
 
   private constructor(repo: RepoSetup | null, fixture: FixtureConfig) {
+    super();
     this.repo = repo;
+    this.gitCwd = repo?.cwd;
     this.fixture = fixture;
   }
 
   // Bare provider — no scenario, no git repo. For unit tests that drive a
   // single stage (e.g. summarize) with a hand-built StageState and only need
   // the side-effect recorders.
-  static empty(fixture: FixtureConfig = {}): MockVcsProvider {
-    return new MockVcsProvider(null, fixture);
+  static empty(fixture: FixtureConfig = {}): MockProvider {
+    return new MockProvider(null, fixture);
   }
 
-  static async create(config: Config): Promise<MockVcsProvider> {
-    return MockVcsProvider.fromUrl(config.pr.url);
+  static async create(config: Config): Promise<MockProvider> {
+    return MockProvider.fromUrl(config.pr.url);
   }
 
-  static fromUrl(url: string): MockVcsProvider {
+  static fromUrl(url: string): MockProvider {
     const m = url.match(/^mock:\/\/(.+)$/);
     if (!m) throw new Error(`Invalid mock URL: ${url}. Expected: mock://<scenario>`);
     const scenario = m[1]!;
     const scenarioPath = join(findProjectRoot(), "tests", "fixtures", scenario);
     if (!existsSync(scenarioPath)) {
       console.warn(`mock: scenario ${scenario} not found at ${scenarioPath}; provider has no fixture data`);
-      return new MockVcsProvider(null, {});
+      return new MockProvider(null, {});
     }
     const fixture = loadFixtureConfig(scenarioPath);
     const repo = setupRepo(scenarioPath);
     // Stages read changed files via relative paths; pin cwd to the temp repo
     // so existsSync / readFileSync resolve against the mock head tree.
     process.chdir(repo.cwd);
-    return new MockVcsProvider(repo, fixture);
+    return new MockProvider(repo, fixture);
   }
 
-  // ---- VcsProvider --------------------------------------------------------
+  // ---- Provider --------------------------------------------------------
 
   async getPRMetadata(): Promise<PRMetadata> {
     const fromFixture = this.fixture.metadata ?? {};
@@ -186,19 +191,26 @@ export class MockVcsProvider implements VcsProvider {
     };
   }
 
-  async getChangedFiles(meta: PRMetadata): Promise<ChangedFile[]> {
+  // Bare (`empty()`) mocks have no git repo — guard, then defer to the
+  // base class's delegation against gitCwd.
+  override async getChangedFiles(meta: PRMetadata): Promise<ChangedFile[]> {
     if (!this.repo) return [];
-    return gitChangedFiles({ baseSha: meta.baseSha, headSha: meta.headSha, cwd: this.repo.cwd });
+    return super.getChangedFiles(meta);
   }
 
-  async getPotentialRenames(meta: PRMetadata): Promise<PotentialRename[]> {
+  override async getPotentialRenames(meta: PRMetadata): Promise<PotentialRename[]> {
     if (!this.repo) return [];
-    return gitPotentialRenames({ baseSha: meta.baseSha, headSha: meta.headSha, cwd: this.repo.cwd });
+    return super.getPotentialRenames(meta);
   }
 
-  async getFileDiff(meta: PRMetadata, path: string, opts: FileDiffOpts): Promise<string> {
+  override async getFileDiff(meta: PRMetadata, path: string, opts: FileDiffOpts): Promise<string> {
     if (!this.repo) return "";
-    return gitFileDiff({ baseSha: meta.baseSha, headSha: meta.headSha, path, context: opts.context, cwd: this.repo.cwd });
+    return super.getFileDiff(meta, path, opts);
+  }
+
+  override async getRenames(meta: PRMetadata): Promise<{ [oldPath: string]: string }> {
+    if (!this.repo) return {};
+    return super.getRenames(meta);
   }
 
   async getPRComments(): Promise<PRComment[]> {
@@ -222,17 +234,6 @@ export class MockVcsProvider implements VcsProvider {
   }
   async deleteComment(commentId: string, kind: "issue" | "review"): Promise<void> {
     this._deletedComments.push({ commentId, kind });
-  }
-  // Renames come from git's -M detection in getChangedFiles; mock keeps this
-  // method coherent with the others (callers use getChangedFiles directly).
-  async getRenames(meta: PRMetadata): Promise<{ [oldPath: string]: string }> {
-    if (!this.repo) return {};
-    const changed = await gitChangedFiles({ baseSha: meta.baseSha, headSha: meta.headSha, cwd: this.repo.cwd });
-    const out: { [oldPath: string]: string } = {};
-    for (const f of changed) {
-      if (f.status === "renamed" && f.oldPath) out[f.oldPath] = f.path;
-    }
-    return out;
   }
 
   // ---- Accessors for test assertions -------------------------------------

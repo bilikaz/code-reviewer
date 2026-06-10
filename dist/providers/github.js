@@ -1,4 +1,4 @@
-// GitHub implementation of VcsProvider. REST via @octokit/rest for the basic
+// GitHub implementation of Provider. REST via @octokit/rest for the basic
 // PR data and posting; GraphQL for review-thread resolution (the REST API
 // doesn't expose `isResolved` or a resolve endpoint on review threads).
 //
@@ -7,8 +7,8 @@
 //   - `contents: read` to read the diff
 //   - (read:user) implied by getAuthenticated for non-Actions runs.
 import { Octokit } from "@octokit/rest";
-import { gitChangedFiles, gitFileDiff, gitPotentialRenames } from "../lib/git.js";
-export class GitHubProvider {
+import { BaseProvider } from "./base.js";
+export class GitHubProvider extends BaseProvider {
     client;
     owner;
     repo;
@@ -16,6 +16,7 @@ export class GitHubProvider {
     botLogin;
     name = "github";
     constructor(client, owner, repo, number, botLogin) {
+        super();
         this.client = client;
         this.owner = owner;
         this.repo = repo;
@@ -63,15 +64,6 @@ export class GitHubProvider {
             url: data.html_url,
             state: data.merged ? "merged" : data.state,
         };
-    }
-    async getChangedFiles(meta) {
-        return gitChangedFiles({ baseSha: meta.baseSha, headSha: meta.headSha });
-    }
-    async getPotentialRenames(meta) {
-        return gitPotentialRenames({ baseSha: meta.baseSha, headSha: meta.headSha });
-    }
-    async getFileDiff(meta, path, opts) {
-        return gitFileDiff({ baseSha: meta.baseSha, headSha: meta.headSha, path, context: opts.context });
     }
     async getPRComments() {
         const out = [];
@@ -161,6 +153,8 @@ export class GitHubProvider {
             await this.client.pulls.deleteReviewComment({ owner: this.owner, repo: this.repo, comment_id: id });
         }
     }
+    // GitHub's compare API has its own rename detection — richer than the
+    // base class's git -M derivation.
     async getRenames(meta) {
         const resp = await this.client.repos.compareCommits({
             owner: this.owner, repo: this.repo, base: meta.baseSha, head: meta.headSha,

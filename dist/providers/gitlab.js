@@ -1,4 +1,4 @@
-// GitLab implementation of VcsProvider. Plain fetch — no official SDK needed
+// GitLab implementation of Provider. Plain fetch — no official SDK needed
 // for the subset we use.
 //
 // Token needs:
@@ -7,18 +7,37 @@
 //
 // `baseUrl` defaults to https://gitlab.com/api/v4; self-hosted instances pass
 // their own.
-import { gitChangedFiles, gitFileDiff, gitPotentialRenames } from "../lib/git.js";
-export class GitLabProvider {
-    token;
-    baseUrl;
+import { BaseProvider } from "./base.js";
+// Fetch wrapper owned by this provider — deliberately NOT shared with
+// bitbucket.ts: the two wrappers look alike today only by coincidence, and
+// the APIs will diverge (pagination, rate limits, auth). See docs/conventions/consolidation.md.
+function makeApi(baseUrl, token) {
+    return async (path, init) => {
+        const resp = await fetch(`${baseUrl}${path}`, {
+            ...init,
+            headers: {
+                "PRIVATE-TOKEN": token,
+                "Content-Type": "application/json",
+                ...(init?.headers ?? {}),
+            },
+        });
+        if (!resp.ok) {
+            const text = await resp.text().catch(() => "");
+            throw new Error(`GitLab API ${resp.status}: ${text.slice(0, 1024)}`);
+        }
+        return resp.json();
+    };
+}
+export class GitLabProvider extends BaseProvider {
+    api;
     projectPath;
     number;
     botLogin;
     name = "gitlab";
-    constructor(token, baseUrl, projectPath, // {host}/{owner}/{repo}
+    constructor(api, projectPath, // {host}/{owner}/{repo}
     number, botLogin) {
-        this.token = token;
-        this.baseUrl = baseUrl;
+        super();
+        this.api = api;
         this.projectPath = projectPath;
         this.number = number;
         this.botLogin = botLogin;
@@ -32,29 +51,10 @@ export class GitLabProvider {
         const m = url.match(/^https?:\/\/([^/]+)\/([^/]+)\/([^/]+)\/-\/merge_requests\/(\d+)/);
         if (!m)
             throw new Error(`GitLabProvider: not a GitLab MR URL: ${url}`);
-        const resolvedBaseUrl = (baseUrl || "https://gitlab.com/api/v4").replace(/\/$/, "");
+        const api = makeApi((baseUrl || "https://gitlab.com/api/v4").replace(/\/$/, ""), token);
         const projectPath = `${m[1]}/${m[2]}/${m[3]}`;
-        const me = await GitLabProvider.api(resolvedBaseUrl, token, "/user");
-        return new GitLabProvider(token, resolvedBaseUrl, projectPath, parseInt(m[4], 10), me.username);
-    }
-    // Static so create() can use it before the instance exists.
-    static async api(baseUrl, token, path, opts) {
-        const resp = await fetch(`${baseUrl}${path}`, {
-            ...opts,
-            headers: {
-                "PRIVATE-TOKEN": token,
-                "Content-Type": "application/json",
-                ...(opts?.headers ?? {}),
-            },
-        });
-        if (!resp.ok) {
-            const text = await resp.text().catch(() => "");
-            throw new Error(`GitLab API ${resp.status}: ${text.slice(0, 1024)}`);
-        }
-        return resp.json();
-    }
-    api(path, opts) {
-        return GitLabProvider.api(this.baseUrl, this.token, path, opts);
+        const me = await api("/user");
+        return new GitLabProvider(api, projectPath, parseInt(m[4], 10), me.username);
     }
     mrPath() {
         return `/projects/${encodeURIComponent(this.projectPath)}/merge_requests/${this.number}`;
@@ -72,15 +72,6 @@ export class GitLabProvider {
             url: mr.web_url,
             state: mr.state === "merged" ? "merged" : mr.state,
         };
-    }
-    async getChangedFiles(meta) {
-        return gitChangedFiles({ baseSha: meta.baseSha, headSha: meta.headSha });
-    }
-    async getPotentialRenames(meta) {
-        return gitPotentialRenames({ baseSha: meta.baseSha, headSha: meta.headSha });
-    }
-    async getFileDiff(meta, path, opts) {
-        return gitFileDiff({ baseSha: meta.baseSha, headSha: meta.headSha, path, context: opts.context });
     }
     async getPRComments() {
         const out = [];
@@ -154,6 +145,8 @@ export class GitLabProvider {
     async deleteComment(commentId, _kind) {
         await this.api(`${this.mrPath()}/notes/${commentId}`, { method: "DELETE" });
     }
+    // GitLab's changes API reports renames directly — richer than the base
+    // class's git -M derivation.
     async getRenames(_meta) {
         const changes = await this.api(`${this.mrPath()}/changes`);
         const out = {};

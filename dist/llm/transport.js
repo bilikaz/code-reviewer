@@ -1,14 +1,36 @@
-// SSE parser for OpenAI-compatible /chat/completions streams.
+// LLM transport — the wire level, both directions:
+//   - send():    POST to an OpenAI-compatible /chat/completions endpoint,
+//                    returns the raw Response.
+//   - receive(): SSE parser for the streamed response. Each chunk is
+//                    `data: {json}\n\n`, terminated by `data: [DONE]`. We
+//                    accumulate `delta.content` (the visible text) and
+//                    `delta.tool_calls` (function calls the LLM asks us to
+//                    execute) into a final shape that looks like a
+//                    non-streaming completion's `choices[0].message`.
 //
-// Each chunk is `data: {json}\n\n`, terminated by `data: [DONE]`. We
-// accumulate `delta.content` (the visible text) and `delta.tool_calls`
-// (function calls the LLM is asking us to execute) into a final shape that
-// looks like a non-streaming completion's `choices[0].message`.
-//
-// Side effect: while streaming, write `delta.content` to stderr live so the
-// CI log shows the LLM's output as it's produced — the same UX the old
-// Python harness gave us via stream-json + jq.
-export async function readStream(resp, opts) {
+// The two halves are one contract: receive parses exactly what send's
+// `stream: true` request produces (incl. stream_options.include_usage →
+// usage accumulation). Consumer API lives in client.ts; the wire shapes
+// themselves live in types.ts.
+export async function send(args) {
+    const headers = {
+        "Content-Type": "application/json",
+        "Accept": args.req.stream ? "text/event-stream" : "application/json",
+    };
+    if (args.apiKey)
+        headers["Authorization"] = `Bearer ${args.apiKey}`;
+    const resp = await fetch(`${args.baseUrl}/chat/completions`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify(args.req),
+    });
+    if (!resp.ok) {
+        const text = await resp.text().catch(() => "");
+        throw new Error(`LLM HTTP ${resp.status}: ${text.slice(0, 1024)}`);
+    }
+    return resp;
+}
+export async function receive(resp, opts) {
     if (!resp.body)
         throw new Error("LLM response has no body");
     const reader = resp.body.getReader();

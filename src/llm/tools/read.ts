@@ -7,7 +7,8 @@
 
 import { readFile } from "node:fs/promises";
 
-import { cap, type Tool } from "./shared.ts";
+import { errorMessage } from "../../lib/errors.ts";
+import { cap, type Tool } from "./types.ts";
 
 const MAX_LINES = 300;
 
@@ -53,7 +54,7 @@ export const readTool: Tool = {
       return {
         ok: false,
         output:
-          `error reading ${path}: ${(e as Error).message}. ` +
+          `error reading ${path}: ${errorMessage(e)}. ` +
           `Check the path (relative to the working directory) and try Bash ls/find if unsure.`,
       };
     }

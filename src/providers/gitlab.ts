@@ -1,4 +1,4 @@
-// GitLab implementation of VcsProvider. Plain fetch — no official SDK needed
+// GitLab implementation of Provider. Plain fetch — no official SDK needed
 // for the subset we use.
 //
 // Token needs:
@@ -9,16 +9,31 @@
 // their own.
 
 import type { Config } from "../ctx.ts";
-import { gitChangedFiles, gitFileDiff, gitPotentialRenames } from "../lib/git.ts";
-import type {
-  ChangedFile,
-  FileDiffOpts,
-  InlinePost,
-  PotentialRename,
-  PRComment,
-  PRMetadata,
-  VcsProvider,
-} from "./types.ts";
+import { BaseProvider } from "./base.ts";
+import type { InlinePost, PRComment, PRMetadata, Provider } from "./types.ts";
+
+type Api = (path: string, init?: RequestInit) => Promise<unknown>;
+
+// Fetch wrapper owned by this provider — deliberately NOT shared with
+// bitbucket.ts: the two wrappers look alike today only by coincidence, and
+// the APIs will diverge (pagination, rate limits, auth). See docs/conventions/consolidation.md.
+function makeApi(baseUrl: string, token: string): Api {
+  return async (path, init) => {
+    const resp = await fetch(`${baseUrl}${path}`, {
+      ...init,
+      headers: {
+        "PRIVATE-TOKEN": token,
+        "Content-Type": "application/json",
+        ...(init?.headers ?? {}),
+      },
+    });
+    if (!resp.ok) {
+      const text = await resp.text().catch(() => "");
+      throw new Error(`GitLab API ${resp.status}: ${text.slice(0, 1024)}`);
+    }
+    return resp.json() as Promise<unknown>;
+  };
+}
 
 interface GitLabMR {
   id: number;
@@ -51,16 +66,17 @@ interface GitLabNote {
   thread_id?: number;
 }
 
-export class GitLabProvider implements VcsProvider {
+export class GitLabProvider extends BaseProvider implements Provider {
   readonly name = "gitlab" as const;
 
   private constructor(
-    private readonly token: string,
-    private readonly baseUrl: string,
+    private readonly api: Api,
     private readonly projectPath: string,    // {host}/{owner}/{repo}
     private readonly number: number,
     private readonly botLogin: string,
-  ) {}
+  ) {
+    super();
+  }
 
   static async create(config: Config): Promise<GitLabProvider> {
     const { url } = config.pr;
@@ -69,31 +85,10 @@ export class GitLabProvider implements VcsProvider {
     // {host}/{owner}/{repo}/-/merge_requests/{n}
     const m = url.match(/^https?:\/\/([^/]+)\/([^/]+)\/([^/]+)\/-\/merge_requests\/(\d+)/);
     if (!m) throw new Error(`GitLabProvider: not a GitLab MR URL: ${url}`);
-    const resolvedBaseUrl = (baseUrl || "https://gitlab.com/api/v4").replace(/\/$/, "");
+    const api = makeApi((baseUrl || "https://gitlab.com/api/v4").replace(/\/$/, ""), token);
     const projectPath = `${m[1]!}/${m[2]!}/${m[3]!}`;
-    const me = await GitLabProvider.api(resolvedBaseUrl, token, "/user") as { username: string };
-    return new GitLabProvider(token, resolvedBaseUrl, projectPath, parseInt(m[4]!, 10), me.username);
-  }
-
-  // Static so create() can use it before the instance exists.
-  private static async api(baseUrl: string, token: string, path: string, opts?: RequestInit): Promise<unknown> {
-    const resp = await fetch(`${baseUrl}${path}`, {
-      ...opts,
-      headers: {
-        "PRIVATE-TOKEN": token,
-        "Content-Type": "application/json",
-        ...(opts?.headers ?? {}),
-      },
-    });
-    if (!resp.ok) {
-      const text = await resp.text().catch(() => "");
-      throw new Error(`GitLab API ${resp.status}: ${text.slice(0, 1024)}`);
-    }
-    return resp.json() as unknown;
-  }
-
-  private api(path: string, opts?: RequestInit): Promise<unknown> {
-    return GitLabProvider.api(this.baseUrl, this.token, path, opts);
+    const me = await api("/user") as { username: string };
+    return new GitLabProvider(api, projectPath, parseInt(m[4]!, 10), me.username);
   }
 
   private mrPath(): string {
@@ -113,18 +108,6 @@ export class GitLabProvider implements VcsProvider {
       url: mr.web_url,
       state: mr.state === "merged" ? "merged" : (mr.state as "open" | "closed"),
     };
-  }
-
-  async getChangedFiles(meta: PRMetadata): Promise<ChangedFile[]> {
-    return gitChangedFiles({ baseSha: meta.baseSha, headSha: meta.headSha });
-  }
-
-  async getPotentialRenames(meta: PRMetadata): Promise<PotentialRename[]> {
-    return gitPotentialRenames({ baseSha: meta.baseSha, headSha: meta.headSha });
-  }
-
-  async getFileDiff(meta: PRMetadata, path: string, opts: FileDiffOpts): Promise<string> {
-    return gitFileDiff({ baseSha: meta.baseSha, headSha: meta.headSha, path, context: opts.context });
   }
 
   async getPRComments(): Promise<PRComment[]> {
@@ -203,7 +186,9 @@ export class GitLabProvider implements VcsProvider {
     await this.api(`${this.mrPath()}/notes/${commentId}`, { method: "DELETE" });
   }
 
-  async getRenames(_meta: PRMetadata): Promise<{ [oldPath: string]: string }> {
+  // GitLab's changes API reports renames directly — richer than the base
+  // class's git -M derivation.
+  override async getRenames(_meta: PRMetadata): Promise<{ [oldPath: string]: string }> {
     const changes = await this.api(`${this.mrPath()}/changes`) as {
       changes?: { renamed_to?: string; renamed_from?: string; old_path?: string; new_path?: string }[];
     };

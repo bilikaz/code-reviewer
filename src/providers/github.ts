@@ -1,4 +1,4 @@
-// GitHub implementation of VcsProvider. REST via @octokit/rest for the basic
+// GitHub implementation of Provider. REST via @octokit/rest for the basic
 // PR data and posting; GraphQL for review-thread resolution (the REST API
 // doesn't expose `isResolved` or a resolve endpoint on review threads).
 //
@@ -10,16 +10,8 @@
 import { Octokit } from "@octokit/rest";
 
 import type { Config } from "../ctx.ts";
-import { gitChangedFiles, gitFileDiff, gitPotentialRenames } from "../lib/git.ts";
-import type {
-  ChangedFile,
-  FileDiffOpts,
-  InlinePost,
-  PotentialRename,
-  PRComment,
-  PRMetadata,
-  VcsProvider,
-} from "./types.ts";
+import { BaseProvider } from "./base.ts";
+import type { InlinePost, PRComment, PRMetadata, Provider } from "./types.ts";
 
 interface ThreadGql {
   id: string;
@@ -27,7 +19,7 @@ interface ThreadGql {
   comments: { nodes: { databaseId: number | null }[] };
 }
 
-export class GitHubProvider implements VcsProvider {
+export class GitHubProvider extends BaseProvider implements Provider {
   readonly name = "github" as const;
 
   private constructor(
@@ -36,7 +28,9 @@ export class GitHubProvider implements VcsProvider {
     private readonly repo: string,
     private readonly number: number,
     private readonly botLogin: string,
-  ) {}
+  ) {
+    super();
+  }
 
   static async create(config: Config, octokit?: Octokit): Promise<GitHubProvider> {
     const { url } = config.pr;
@@ -77,18 +71,6 @@ export class GitHubProvider implements VcsProvider {
       url: data.html_url,
       state: data.merged ? "merged" : (data.state as "open" | "closed"),
     };
-  }
-
-  async getChangedFiles(meta: PRMetadata): Promise<ChangedFile[]> {
-    return gitChangedFiles({ baseSha: meta.baseSha, headSha: meta.headSha });
-  }
-
-  async getPotentialRenames(meta: PRMetadata): Promise<PotentialRename[]> {
-    return gitPotentialRenames({ baseSha: meta.baseSha, headSha: meta.headSha });
-  }
-
-  async getFileDiff(meta: PRMetadata, path: string, opts: FileDiffOpts): Promise<string> {
-    return gitFileDiff({ baseSha: meta.baseSha, headSha: meta.headSha, path, context: opts.context });
   }
 
   async getPRComments(): Promise<PRComment[]> {
@@ -189,7 +171,9 @@ export class GitHubProvider implements VcsProvider {
     }
   }
 
-  async getRenames(meta: PRMetadata): Promise<{ [oldPath: string]: string }> {
+  // GitHub's compare API has its own rename detection — richer than the
+  // base class's git -M derivation.
+  override async getRenames(meta: PRMetadata): Promise<{ [oldPath: string]: string }> {
     const resp = await this.client.repos.compareCommits({
       owner: this.owner, repo: this.repo, base: meta.baseSha, head: meta.headSha,
     });

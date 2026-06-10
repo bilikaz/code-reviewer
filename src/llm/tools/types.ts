@@ -1,6 +1,6 @@
 // Shared types + helpers for LLM tools.
 
-import type { ToolSchema } from "../client.ts";
+import type { ToolSchema } from "../types.ts";
 
 export interface ToolResult {
   ok: boolean;

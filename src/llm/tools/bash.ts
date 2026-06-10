@@ -6,7 +6,7 @@
 
 import { spawn } from "node:child_process";
 
-import { cap, type Tool, type ToolResult } from "./shared.ts";
+import { cap, type Tool, type ToolResult } from "./types.ts";
 
 export const bashTool: Tool = {
   schema: {
