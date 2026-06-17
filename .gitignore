@@ -8,6 +8,10 @@ node_modules/
 # own repo later. Has its own git; kept out of the reviewer repo.
 harness/
 
-# Claude Code local config (permission grants etc.) — never committed
+# Agent/editor local config (permission grants etc.) — never committed
 .claude/
+.qwen/
 CLAUDE.local.md
+
+# Session alignment doc — scratchpad, never committed (see CLAUDE.md)
+implementation.md
