@@ -155,3 +155,11 @@ docs/
 ```
 
 Documentation is layered: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) is this repo's map, [docs/conventions/](docs/conventions/) holds the portable rule set (reusable across projects), and [docs/adr/](docs/adr/) is the decision log that adopts them. The working procedure that maintains these layers is the root [CLAUDE.md](CLAUDE.md) — agent sessions read it on start.
+
+## License
+
+Licensed under the **GNU Affero General Public License v3.0** ([LICENSE](LICENSE)) — © 2026 VBTECH.
+
+Use, modify, and run it freely, including commercially. The AGPL's copyleft means that if you distribute it or run a modified version as a service, you must make your modified source available under the AGPL — so improvements flow back.
+
+**Commercial license.** To use it in a closed-source product or service without the AGPL's source-sharing obligations, a commercial license is available — contact **valdas@vbtech.eu**.
